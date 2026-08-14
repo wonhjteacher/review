@@ -109,22 +109,71 @@ button {
   .body    { font-size: 16px; }
 }
 
-/* --- 레이아웃 (DESIGN 4장) --- */
+/* 넓은 화면에서는 DESIGN 3장 스케일보다 한 단계 키운다.
+   1080px 컨테이너에서 44px Display는 작게 읽힌다. */
+@media (min-width: 1024px) {
+  .display { font-size: 52px; }
+  .h1      { font-size: 32px; }
+}
+
+/* --- 레이아웃 -------------------------------------------------
+   컨테이너는 두 종류다.
+   .container        읽는 컬럼 — 데모·마무리처럼 집중이 필요한 곳
+   .container--wide  배치 컬럼 — 카드를 가로로 늘어놓는 곳
+------------------------------------------------------------- */
 .container {
-  max-width: 480px;   /* 데스크톱에서도 넓히지 않는다 */
+  /* width:100%가 없으면 플렉스/그리드 부모 안에서 가로 auto 마진이
+     stretch를 취소해 내용물 크기로 줄어든다. Hero가 그 경우다. */
+  width: 100%;
+  max-width: 480px;
   margin: 0 auto;
   padding: 0 20px;
 }
 
+.container--wide { max-width: 480px; }
+
+@media (min-width: 768px) {          /* 태블릿 */
+  .container       { max-width: 600px; padding: 0 32px; }
+  .container--wide { max-width: 768px; }
+}
+
+@media (min-width: 1024px) {         /* PC */
+  .container       { max-width: 640px; padding: 0 40px; }
+  .container--wide { max-width: 1080px; }
+}
+
 .section { padding: 64px 0; }
-@media (min-width: 768px) { .section { padding: 96px 0; } }
+@media (min-width: 768px)  { .section { padding: 96px 0; } }
+@media (min-width: 1024px) { .section { padding: 120px 0; } }
 
 .section--bg  { background: var(--color-bg); }
 .section--alt { background: var(--color-surface-alt); }
 
 .section__title { margin-bottom: 24px; }
+@media (min-width: 1024px) { .section__title { margin-bottom: 40px; } }
 
-.stack-12 > * + * { margin-top: 12px; }
+/* --- 카드 그리드 ---------------------------------------------
+   모바일은 1열. 간격은 gap 한 곳에서만 관리한다.
+------------------------------------------------------------- */
+.cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .cards { gap: 16px; }
+  .cards--3 { grid-template-columns: repeat(3, 1fr); }
+  .cards--2 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .cards { gap: 24px; }
+}
+
+/* CTA 버튼이 넓은 화면에서 과하게 늘어나지 않게 잡아둔다 */
+.action { max-width: 100%; }
+@media (min-width: 768px) { .action { max-width: 320px; } }
 
 /* ============================================================
    ① Hero
@@ -146,6 +195,21 @@ button {
 .hero__sub {
   color: var(--color-ink-700);
   margin: 12px 0 32px;
+}
+
+/* 미리보기 카드는 PC에서만 등장한다.
+   좁은 화면에서는 바로 아래 데모와 중복되어 스크롤만 길어진다. */
+.hero__preview { display: none; }
+
+@media (min-width: 1024px) {
+  .hero__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 64px;
+  }
+  .hero__preview { display: block; }
+  .hero__preview .result__card { padding: 28px; }
 }
 
 .hero__hint {
@@ -269,7 +333,10 @@ button {
   align-items: center;
   padding: 64px 0;
 }
+/* 화면이 아무리 넓어도 데모는 좁은 단일 컬럼을 유지한다.
+   '한 화면에 하나씩'이 이 섹션의 핵심이다 (DESIGN 1장). */
 .demo__inner { width: 100%; }
+.demo .container { max-width: 520px; }
 
 /* 질문 전환 (DESIGN 6장) */
 .demo__stage.is-leaving { opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
@@ -407,9 +474,25 @@ button {
 /* ============================================================
    ⑥ 마무리 CTA · ⑦ 푸터
    ============================================================ */
-.closing__spacer { height: 8px; }
+@media (min-width: 768px) {
+  .closing { text-align: center; }
+  .closing .action { margin: 0 auto; }
+}
 
+/* --- 푸터 --- */
 .footer { padding: 32px 0 40px; }
+.footer__meta-group { margin-top: 4px; }
+
+@media (min-width: 1024px) {
+  .footer { padding: 40px 0 48px; }
+  .footer__inner {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  .footer__meta-group { margin-top: 0; text-align: right; }
+}
 .footer__brand { color: var(--color-ink-700); }
 /* alt 배경 위에서 ink-500은 4.43:1로 AA에 못 미쳐 ink-700을 쓴다.
    위계는 굵기로 유지한다 (DESIGN 3장 — 위계는 굵기와 크기로만). */
