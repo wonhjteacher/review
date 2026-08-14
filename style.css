@@ -1,0 +1,439 @@
+/* ============================================================
+   오늘은 여기 — Phase 0
+   토큰과 수치는 DESIGN.md를 그대로 따른다.
+   ============================================================ */
+
+/* --- 토큰 (DESIGN 2·4·6장) --- */
+:root {
+  /* Primary — 토마토 레드 (CTA·강조 전용) */
+  --color-primary:        #D93A2B;
+  --color-primary-hover:  #BE2E20;
+  --color-primary-press:  #A32619;
+  --color-primary-tint:   #FDF0EE;
+
+  /* Surface */
+  --color-bg:             #FFFFFF;
+  --color-surface-alt:    #FAF8F7;
+  --color-line:           #EDE9E7;
+
+  /* Text */
+  --color-ink-900:        #1A1614;
+  --color-ink-700:        #4A423E;
+  --color-ink-500:        #7C726C;
+  --color-ink-300:        #C9C2BD;
+
+  /* Semantic */
+  --color-error:          #B3261E;
+  --color-warning:        #B45309;
+  --color-success:        #2E7D5B;
+
+  /* Radius */
+  --radius-sm:    8px;
+  --radius-md:   14px;
+  --radius-lg:   20px;
+  --radius-full: 999px;
+
+  /* Shadow */
+  --shadow-card:   0 1px 2px rgba(26,22,20,0.04), 0 8px 24px rgba(26,22,20,0.06);
+  --shadow-result: 0 2px 4px rgba(26,22,20,0.05), 0 16px 40px rgba(26,22,20,0.10);
+
+  /* Motion */
+  --ease:     cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 150ms;
+  --dur-base: 250ms;
+}
+
+/* --- 리셋 --- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink-700);
+  font-family: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* 375px에서 가로 스크롤이 생기지 않도록 */
+  overflow-x: hidden;
+}
+
+h1, h2, h3, p, figure { margin: 0; }
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+.plain-list { list-style: none; margin: 0; padding: 0; }
+
+/* 포커스 링은 제거하지 않는다 (DESIGN 9장) */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* --- 타이포 스케일 (DESIGN 3장) — 모바일 기본 --- */
+.display {
+  font-size: 32px; font-weight: 700; line-height: 1.30;
+  letter-spacing: -0.03em; color: var(--color-ink-900);
+}
+.h1 {
+  font-size: 24px; font-weight: 700; line-height: 1.35;
+  letter-spacing: -0.02em; color: var(--color-ink-900);
+}
+.h2 {
+  font-size: 20px; font-weight: 600; line-height: 1.40;
+  letter-spacing: -0.02em; color: var(--color-ink-900);
+}
+.body-l {
+  font-size: 17px; font-weight: 400; line-height: 1.60;
+  letter-spacing: -0.01em;
+}
+.body {
+  font-size: 15px; font-weight: 400; line-height: 1.60;
+  letter-spacing: -0.01em;
+}
+.caption {
+  font-size: 13px; font-weight: 600; line-height: 1.50;
+  letter-spacing: 0;
+}
+
+@media (min-width: 768px) {
+  .display { font-size: 44px; }
+  .h1      { font-size: 28px; }
+  .h2      { font-size: 22px; }
+  .body-l  { font-size: 18px; }
+  .body    { font-size: 16px; }
+}
+
+/* --- 레이아웃 (DESIGN 4장) --- */
+.container {
+  max-width: 480px;   /* 데스크톱에서도 넓히지 않는다 */
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.section { padding: 64px 0; }
+@media (min-width: 768px) { .section { padding: 96px 0; } }
+
+.section--bg  { background: var(--color-bg); }
+.section--alt { background: var(--color-surface-alt); }
+
+.section__title { margin-bottom: 24px; }
+
+.stack-12 > * + * { margin-top: 12px; }
+
+/* ============================================================
+   ① Hero
+   ============================================================ */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero__brand {
+  color: var(--color-primary);
+  margin-bottom: 16px;
+}
+
+.hero__sub {
+  color: var(--color-ink-700);
+  margin: 12px 0 32px;
+}
+
+.hero__hint {
+  position: absolute;
+  left: 0; right: 0; bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-ink-500);
+}
+
+.hero__arrow {
+  width: 10px; height: 10px;
+  border-right: 2px solid var(--color-ink-300);
+  border-bottom: 2px solid var(--color-ink-300);
+  transform: rotate(45deg);
+  animation: hint-bob 1.6s var(--ease) infinite;
+}
+
+@keyframes hint-bob {
+  0%, 100% { transform: rotate(45deg) translate(0, 0); }
+  50%      { transform: rotate(45deg) translate(3px, 3px); }
+}
+
+/* ============================================================
+   버튼 (DESIGN 5장)
+   ============================================================ */
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 56px;
+  background: var(--color-primary);
+  color: #FFFFFF;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  border-radius: var(--radius-md);
+  transition: background var(--dur-fast) var(--ease),
+              transform 100ms var(--ease);
+}
+@media (min-width: 768px) { .btn-primary { font-size: 18px; } }
+
+.btn-primary:hover  { background: var(--color-primary-hover); }
+.btn-primary:active { background: var(--color-primary-press); transform: scale(0.98); }
+
+/* 보조 버튼 — 뒤로 가기 */
+.btn-text {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;          /* 터치 영역 확보 */
+  padding: 0 4px;
+  color: var(--color-ink-500);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease);
+}
+.btn-text:hover { color: var(--color-ink-700); }
+
+/* ============================================================
+   ② 문제 공감 · ③ 해결 방식 · ⑤ 기능 미리보기
+   그림자 대신 1px 테두리로 구분한다 (DESIGN 4장)
+   ============================================================ */
+.empathy,
+.step,
+.feature {
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.step__num {
+  display: inline-block;
+  color: var(--color-primary);
+  margin-bottom: 8px;
+}
+.step__desc,
+.feature__desc { color: var(--color-ink-700); margin-top: 12px; }
+
+.feature__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* --- 배지 (DESIGN 5장) --- */
+.badge {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.50;
+}
+.badge--soon {
+  background: var(--color-surface-alt);
+  color: var(--color-ink-500);
+}
+.badge--wish {
+  background: var(--color-primary-tint);
+  /* tint 배경 위에서 primary는 4.11:1로 AA에 못 미친다.
+     한 단계 어두운 hover 값이 5.24:1로 통과한다 (DESIGN 2장 대비 확인 지침). */
+  color: var(--color-primary-hover);
+}
+/* alt 배경 섹션 안에서는 준비 중 배지가 묻히므로 흰 배경으로 뒤집는다 */
+.section--alt .badge--soon { background: var(--color-bg); }
+
+/* ============================================================
+   ④ 체험 데모
+   ============================================================ */
+.demo {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  padding: 64px 0;
+}
+.demo__inner { width: 100%; }
+
+/* 질문 전환 (DESIGN 6장) */
+.demo__stage.is-leaving { opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+
+.view {
+  animation: view-in var(--dur-base) var(--ease) both;
+}
+.view--result {
+  animation: result-in 300ms var(--ease) both;
+}
+
+@keyframes view-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes result-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- 진행 표시 (DESIGN 5장) --- */
+.progress__label {
+  display: block;
+  color: var(--color-ink-500);
+  margin-bottom: 8px;
+}
+.progress__track {
+  height: 3px;
+  background: var(--color-line);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.progress__fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width var(--dur-base) var(--ease);
+}
+
+.question {
+  margin: 24px 0;
+  /* 포커스를 받지만 링은 띄우지 않는다 — 시각적 소음이므로 */
+  outline: none;
+}
+
+/* --- 선택지 버튼 (DESIGN 5장) --- */
+.choices { display: flex; flex-direction: column; gap: 12px; }
+
+.choice {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 60px;
+  padding: 0 20px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  color: var(--color-ink-900);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: left;
+  transition: border-color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease);
+}
+.choice:hover { border-color: var(--color-ink-300); }
+
+/* 선택됨 — 색만이 아니라 테두리 굵기도 함께 바꾼다 (DESIGN 9장) */
+.choice.is-selected {
+  background: var(--color-primary-tint);
+  border: 1.5px solid var(--color-primary);
+}
+
+.demo__back { margin-top: 16px; }
+
+/* --- 결과 카드 (DESIGN 5장) --- */
+.result__card {
+  background: var(--color-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-result);
+  padding: 24px;
+}
+
+.result__category { color: var(--color-ink-500); }
+.result__name     { margin-top: 4px; }
+
+.result__tags {
+  display: flex;
+  flex-wrap: wrap;      /* 태그가 2개든 3개든 깨지지 않게 */
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--color-ink-500);
+}
+
+.result__oneliner {
+  color: var(--color-ink-700);
+  margin-top: 16px;
+}
+
+.result__note {
+  color: var(--color-ink-500);
+  margin-top: 12px;
+}
+
+.result__divider {
+  height: 1px;
+  background: var(--color-line);
+  margin: 20px 0;
+  border: 0;
+}
+
+.result__revisit {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-ink-700);
+  font-size: 15px;
+}
+/* 숫자만 primary + 700 */
+.result__rate {
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.result__reason {
+  color: var(--color-ink-500);
+  margin: 12px 4px 0;   /* 카드 밖 */
+}
+
+.result__again { margin-top: 24px; }
+
+/* ============================================================
+   ⑥ 마무리 CTA · ⑦ 푸터
+   ============================================================ */
+.closing__spacer { height: 8px; }
+
+.footer { padding: 32px 0 40px; }
+.footer__brand { color: var(--color-ink-700); }
+/* alt 배경 위에서 ink-500은 4.43:1로 AA에 못 미쳐 ink-700을 쓴다.
+   위계는 굵기로 유지한다 (DESIGN 3장 — 위계는 굵기와 크기로만). */
+.footer__meta  { color: var(--color-ink-700); font-weight: 400; margin-top: 4px; }
+
+/* ============================================================
+   모션 축소 설정 (DESIGN 6장)
+   transform은 모두 제거하고 fade만 남긴다
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .hero__arrow { animation: none; }
+
+  .view, .view--result {
+    animation: fade-in var(--dur-base) var(--ease) both;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .btn-primary:active { transform: none; }
+  .progress__fill { transition: none; }
+
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+  }
+}

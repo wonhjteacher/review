@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>오늘은 여기</title>
+<meta name="description" content="담아둔 맛집 중에서 오늘 갈 한 곳을 골라드려요.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ① Hero -->
+<section id="hero" class="section section--bg hero">
+  <div class="container hero__inner">
+    <p class="caption hero__brand">오늘은 여기</p>
+    <h1 class="display hero__title">저장은 했는데,<br>오늘 어디 가지?</h1>
+    <p class="body-l hero__sub">담아둔 맛집 중에서<br>오늘 갈 한 곳을 골라드려요.</p>
+    <button type="button" class="btn-primary" id="hero-cta">3초 만에 골라보기</button>
+  </div>
+  <div class="hero__hint" aria-hidden="true">
+    <span class="caption">내려보기</span>
+    <span class="hero__arrow"></span>
+  </div>
+</section>
+
+<!-- ② 문제 공감 -->
+<section id="problem" class="section section--alt">
+  <div class="container">
+    <h2 class="h1 section__title">저장한 맛집은 늘어나는데,<br>점심은 늘 가던 곳</h2>
+    <ul class="plain-list stack-12">
+      <li class="empathy"><p class="body">저장 목록이 길어질수록 열어보기 싫어져요</p></li>
+      <li class="empathy"><p class="body">뭐가 내 취향이었는지 기억이 안 나요</p></li>
+      <li class="empathy"><p class="body">결국 어제 갔던 데를 또 가요</p></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ③ 해결 방식 -->
+<section id="how" class="section section--bg">
+  <div class="container">
+    <h2 class="h1 section__title">담아두고, 남기고,<br>꺼내 쓰면 돼요</h2>
+    <ol class="plain-list stack-12">
+      <li class="step">
+        <span class="caption step__num">1</span>
+        <h3 class="h2 step__title">담는다</h3>
+        <p class="body step__desc">가보고 싶은 곳을 모아둬요</p>
+      </li>
+      <li class="step">
+        <span class="caption step__num">2</span>
+        <h3 class="h2 step__title">가보고 남긴다</h3>
+        <p class="body step__desc">&ldquo;또 올까?&rdquo; 한 줄만 기록해요</p>
+      </li>
+      <li class="step">
+        <span class="caption step__num">3</span>
+        <h3 class="h2 step__title">골라준다</h3>
+        <p class="body step__desc">오늘 조건에 맞는 한 곳을 꺼내드려요</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ④ 체험 데모 — 이 섹션만 화면 높이를 꽉 채운다 -->
+<section id="demo" class="section--bg demo">
+  <div class="container demo__inner">
+    <div class="demo__stage" id="demo-stage" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- ⑤ 기능 미리보기 -->
+<section id="features" class="section section--alt">
+  <div class="container">
+    <h2 class="h1 section__title">앞으로 이런 것들을<br>준비하고 있어요</h2>
+    <ul class="plain-list stack-12">
+      <li class="feature">
+        <div class="feature__head">
+          <h3 class="h2">맛집 담기</h3>
+          <span class="badge badge--soon">준비 중</span>
+        </div>
+        <p class="body feature__desc">링크 하나로 목록에 추가해요</p>
+      </li>
+      <li class="feature">
+        <div class="feature__head">
+          <h3 class="h2">방문 기록</h3>
+          <span class="badge badge--soon">준비 중</span>
+        </div>
+        <p class="body feature__desc">또 갈지 안 갈지만 남기면 끝이에요</p>
+      </li>
+      <li class="feature">
+        <div class="feature__head">
+          <h3 class="h2">리뷰 탐색</h3>
+          <span class="badge badge--soon">준비 중</span>
+        </div>
+        <p class="body feature__desc">다른 사람들의 기록에서 찾아봐요</p>
+      </li>
+      <li class="feature">
+        <div class="feature__head">
+          <h3 class="h2">취향 대시보드</h3>
+          <span class="badge badge--soon">준비 중</span>
+        </div>
+        <p class="body feature__desc">내가 어떤 걸 좋아하는지 한눈에 봐요</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- ⑥ 마무리 CTA -->
+<section id="closing" class="section section--bg">
+  <div class="container closing">
+    <h2 class="h1 section__title">오늘 점심,<br>더 고민하지 마세요</h2>
+    <button type="button" class="btn-primary" id="closing-cta">다시 골라보기</button>
+
+    <!--
+      사전 신청 자리 (Phase 0 범위 밖 — PRD 4장)
+      기능을 붙일 때 아래 마크업을 살려서 쓴다.
+
+      <form class="signup" id="signup">
+        <label class="caption" for="signup-email">먼저 써보고 싶다면 메일을 남겨주세요</label>
+        <input class="signup__input" id="signup-email" type="email" name="email" placeholder="name@example.com" required>
+        <button class="btn-primary" type="submit">신청하기</button>
+      </form>
+    -->
+  </div>
+</section>
+
+<!-- ⑦ 푸터 -->
+<footer class="section--alt footer">
+  <div class="container">
+    <p class="caption footer__brand">오늘은 여기</p>
+    <p class="caption footer__meta">담아둔 맛집 중에서 오늘 갈 한 곳을 골라드려요</p>
+    <p class="caption footer__meta">2026 · Phase 0 프로토타입</p>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
