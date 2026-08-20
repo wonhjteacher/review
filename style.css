@@ -272,6 +272,24 @@ button {
 }
 .btn-text:hover { color: var(--color-ink-700); }
 
+/* 다른 화면으로 넘어가는 텍스트 링크.
+   CTA를 하나 더 만들지 않으면서 다음 행동만 제시할 때 쓴다 */
+.link-text {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;          /* 터치 영역 확보 */
+  padding: 0 4px;
+  color: var(--color-ink-700);   /* 흰 배경 9.81:1 */
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-fast) var(--ease);
+}
+.link-text:hover { color: var(--color-primary-hover); }
+
 /* ============================================================
    ② 문제 공감 · ③ 해결 방식 · ⑤ 기능 미리보기
    그림자 대신 1px 테두리로 구분한다 (DESIGN 4장)
@@ -300,6 +318,9 @@ button {
   gap: 12px;
 }
 
+/* 실제로 열린 기능 카드에만 붙는 링크 */
+.feature__link { margin-top: 4px; margin-left: -4px; }
+
 /* --- 배지 (DESIGN 5장) --- */
 .badge {
   display: inline-block;
@@ -320,6 +341,14 @@ button {
      한 단계 어두운 hover 값이 5.24:1로 통과한다 (DESIGN 2장 대비 확인 지침). */
   color: var(--color-primary-hover);
 }
+/* 이미 열린 기능. `준비 중`과 형태는 같고 면 색으로만 갈린다 */
+.badge--live {
+  background: var(--color-primary-tint);
+  /* tint 배경 위 primary는 4.11:1로 AA 미달 — hover 값이 5.24:1로 통과한다
+     (.badge--wish와 같은 이유의 의도적 예외) */
+  color: var(--color-primary-hover);
+}
+
 /* alt 배경 섹션 안에서는 준비 중 배지가 묻히므로 흰 배경으로 뒤집는다 */
 .section--alt .badge--soon { background: var(--color-bg); }
 
@@ -478,6 +507,9 @@ button {
   .closing { text-align: center; }
   .closing .action { margin: 0 auto; }
 }
+
+/* 주 CTA(다시 골라보기)를 가리지 않도록 아래에 한 단계 낮춰 둔다 */
+.closing__alt { margin-top: 12px; }
 
 /* --- 푸터 --- */
 .footer { padding: 32px 0 40px; }

@@ -96,14 +96,16 @@
 <!-- ⑤ 기능 미리보기 — 태블릿부터 2×2 -->
 <section id="features" class="section section--alt">
   <div class="container container--wide">
-    <h2 class="h1 section__title">앞으로 이런 것들을<br>준비하고 있어요</h2>
+    <h2 class="h1 section__title">이런 것들을<br>하나씩 열고 있어요</h2>
     <ul class="plain-list cards cards--2">
+      <!-- 이 기능만 실제로 열려 있다. 배지와 설명을 현재 구현에 맞춘다 -->
       <li class="feature">
         <div class="feature__head">
           <h3 class="h2">맛집 담기</h3>
-          <span class="badge badge--soon">준비 중</span>
+          <span class="badge badge--live">써볼 수 있어요</span>
         </div>
-        <p class="body feature__desc">링크 하나로 목록에 추가해요</p>
+        <p class="body feature__desc">검색해서 가보고 싶은 곳을 담아둬요</p>
+        <a class="link-text feature__link" href="save.html">담으러 가기</a>
       </li>
       <li class="feature">
         <div class="feature__head">
@@ -137,6 +139,9 @@
     <div class="action">
       <button type="button" class="btn-primary" id="closing-cta">다시 골라보기</button>
     </div>
+
+    <!-- 주 전환은 여전히 체험 데모다. 담기 페이지는 그 다음 행동으로만 제시한다 -->
+    <p class="closing__alt"><a class="link-text" href="save.html">가보고 싶은 곳 담아두기</a></p>
 
     <!--
       사전 신청 자리 (Phase 0 범위 밖 — PRD 4장)

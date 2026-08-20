@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>맛집 담기 — 오늘은 여기</title>
+
+  <!-- 폰트 4줄은 index.html 9~12행과 완전히 동일하게 유지한다.
+       style.css가 font-family: 'Inter','Pretendard',... 를 선언하므로
+       이 줄들이 없으면 에러 없이 시스템 폰트로 조용히 떨어진다. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="save.css">
+</head>
+<body class="save-page container container--wide">
+  <header class="save-header">
+    <a class="save-header__back" href="index.html">← 오늘은 여기</a>
+    <h1 class="h1 save-header__title">맛집 담기</h1>
+    <p class="body save-header__desc">가보고 싶은 곳을 검색해서 목록에 담아두세요</p>
+  </header>
+
+  <section class="search">
+    <form class="search__form" id="search-form">
+      <input class="search__input" id="search-input" type="search"
+             placeholder="가게 이름이나 지역을 입력하세요"
+             name="query" autocomplete="off" aria-label="가게 이름이나 지역">
+      <button class="search__submit" type="submit">검색</button>
+    </form>
+
+    <div class="search__chips" id="search-chips" role="group" aria-label="카테고리">
+      <button type="button" class="chip is-active" data-code="" aria-pressed="true">전체</button>
+      <button type="button" class="chip" data-code="FD6" aria-pressed="false">음식점</button>
+      <button type="button" class="chip" data-code="CE7" aria-pressed="false">카페</button>
+    </div>
+  </section>
+
+  <p class="search__status" id="search-status" role="status" aria-live="polite"></p>
+
+  <ul class="results plain-list" id="results"></ul>
+
+  <section class="saved">
+    <h2 class="h2 saved__title">담아둔 곳 <span class="saved__count" id="saved-count">0</span></h2>
+    <ul class="saved-list plain-list" id="saved-list"></ul>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="storage.js"></script>
+  <script src="save.js"></script>
+</body>
+</html>
