@@ -1,0 +1,20 @@
+# Vercel 배포에 올리지 않는 것
+#
+# api/search.js와 정적 파일(html/css/js)만 올라가면 된다.
+
+# 로컬 개발 전용 서버 — 배포에는 api/search.js가 대신한다.
+# 제외하지 않으면 Vercel이 정적 파일로 취급해 소스를 그대로 내려준다.
+server.py
+__pycache__/
+*.pyc
+
+# 사양 문서 — 저장소에서 읽는 것이고 배포본에 필요 없다
+*.md
+
+# 환경변수는 Vercel 대시보드에서 설정한다. 파일로 올리지 않는다.
+.env
+.env.*
+
+# 기타
+.claude/
+.DS_Store

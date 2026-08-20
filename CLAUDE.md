@@ -25,6 +25,28 @@ PORT=8080 python3 server.py      # 포트 변경
 
 `gh` CLI는 Homebrew가 아니라 `~/.local/bin/gh`에 직접 설치되어 있다.
 
+### 배포 (Vercel)
+
+`/api/search`의 구현이 **둘이다.** 로컬은 `server.py`, 배포는 `api/search.js`.
+
+```
+server.py        로컬 개발 — 정적 서빙 + 프록시. 파이썬 표준 라이브러리만
+api/search.js    배포 — Vercel 서버리스 함수. 의존성 없음(전역 fetch), CommonJS
+```
+
+**둘은 같은 계약을 지켜야 한다** — 사양은 `UI-CONTRACT.md`「/api/search 응답 봉투」다.
+한쪽만 고치면 로컬에서는 되는데 배포에서 깨진다. 고쳤으면 아래로 대조한다:
+
+```bash
+# server.py를 띄워두고, 같은 쿼리를 두 구현에 태워 JSON을 비교한다
+python3 server.py &
+node -e '…' # 두 응답의 JSON.stringify를 직접 비교 — 바이트 단위로 같아야 한다
+```
+
+`.vercelignore`가 `server.py`를 배포에서 뺀다. 빼지 않으면 Vercel이 정적 파일로 취급해 **소스를 그대로 내려준다.**
+
+**Vercel 환경변수에 `KAKAO_REST_API_KEY`를 등록해야 한다.** `.env`는 배포에 올라가지 않는다.
+
 ## 문서가 사양이다
 
 `PRD.md`와 `DESIGN.md`는 참고 문서가 아니라 **확정된 사양서**다. 코드를 고치기 전에 해당 장을 먼저 읽는다.
