@@ -47,9 +47,25 @@
     <ul class="saved-list plain-list" id="saved-list"></ul>
   </section>
 
+  <!-- 구글 리뷰 패널 (UI-CONTRACT 「.review-panel」)
+       <dialog>인 이유 — showModal()이 포커스 가둠·Esc 닫기·배경 비활성을
+       브라우저에게서 공짜로 받는다. 직접 만든 오버레이로 대체하지 않는다.
+       내용은 save.js가 채운다. -->
+  <dialog class="review-panel" id="review-panel" aria-labelledby="review-panel-name">
+    <div class="review-panel__inner">
+      <header class="review-panel__head">
+        <h2 class="h2 review-panel__name" id="review-panel-name"></h2>
+        <button type="button" class="review-panel__close" data-action="close-reviews"
+                aria-label="리뷰 닫기">닫기</button>
+      </header>
+      <div class="review-panel__body" id="review-panel-body" aria-live="polite"></div>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="storage.js"></script>
+  <script src="review-cache.js"></script>
   <script src="save.js"></script>
 </body>
 </html>

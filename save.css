@@ -262,6 +262,15 @@
 }
 .place-card:hover { border-color: var(--color-ink-300); }
 
+/* 카드 전체가 리뷰를 여는 클릭 영역이다 (UI-CONTRACT 「.place-card」).
+   눌리는 곳이라는 신호는 손 모양 커서로만 준다 — 배경을 칠하면
+   3열로 깔렸을 때 화면이 소란스러워진다. */
+.place-card { cursor: pointer; }
+
+/* 액션 줄 안은 각자 자기 커서를 쓴다.
+   버튼은 button 기본값이 이미 pointer이고, 링크도 마찬가지다. */
+.place-card__actions { cursor: auto; }
+
 .place-card__category { color: var(--color-ink-500); }   /* 흰 배경 4.69:1 */
 .place-card__name     { margin-top: 4px; }
 .place-card__address  { color: var(--color-ink-700); margin-top: 8px; }
@@ -290,6 +299,22 @@
   transition: color var(--dur-fast) var(--ease);
 }
 .place-card__link:hover { color: var(--color-ink-900); }
+
+/* 리뷰 보기 — 카드의 주된 클릭 동작이지만 화면에서 가장 조용하다.
+   빨강은 담기(CTA)의 몫이다 (DESIGN 10장 — 토마토 레드는 CTA·선택 상태에만).
+   .place-card__link와 같은 무게로 맞춰 액션 줄이 셋으로 갈라져 보이지 않게 한다. */
+.place-card__reviews {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;                 /* 터치 영역 (DESIGN 9장) */
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--dur-fast) var(--ease);
+}
+.place-card__reviews:hover { color: var(--color-ink-900); }
 
 /* 담기 전 — 면이 아니라 선으로만 빨강을 쓴다.
    카드가 3열로 깔리면 채운 빨강 버튼이 화면에 여러 개 반복된다 (DESIGN 1장 ④) */
@@ -404,6 +429,285 @@
 }
 
 /* ============================================================
+   구글 리뷰 패널
+   <dialog>다 (UI-CONTRACT 「.review-panel」).
+
+   모바일은 하단 시트, 태블릿부터는 가운데 카드다.
+   내용 길이를 알 수 없으므로(리뷰 5개 × 길이 제각각) 높이를 뷰포트에 묶고
+   본문만 스크롤시킨다. 패널 전체가 늘어나 화면을 넘어가게 두지 않는다.
+
+   그림자를 쓰지 않는다 (DESIGN 10장 — 그림자는 데모 결과 카드 하나에만).
+   여기서 떠 있다는 신호는 그림자가 아니라 어두워진 ::backdrop이 준다.
+   ============================================================ */
+
+/* .toast와 **똑같은 함정**이다.
+   dialog의 브라우저 기본값은 dialog:not([open]) { display: none }인데
+   아래에서 display: flex를 선언하는 순간 그 기본값을 이겨
+   패널이 처음부터 화면에 떠 있게 된다. 이 한 줄을 지우지 않는다. */
+.review-panel:not([open]) { display: none; }
+
+.review-panel {
+  /* dialog의 UA 기본값(가운데 정렬 margin·1px solid 테두리·padding)을 걷어낸다 */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  max-width: none;
+
+  /* 모바일 — 화면 아래에 붙는 시트 */
+  position: fixed;
+  inset: auto 0 0 0;
+  width: 100%;
+  max-height: 85vh;
+
+  display: flex;
+  background: var(--color-bg);
+  color: var(--color-ink-700);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  overflow: hidden;             /* 라운드 밖으로 본문이 삐져나오지 않게 */
+  animation: review-panel-in var(--dur-base) var(--ease) both;
+}
+
+/* 모바일 브라우저의 주소창 때문에 vh는 실제 보이는 높이보다 크다.
+   dvh를 아는 브라우저에서는 그쪽을 쓴다. */
+@supports (max-height: 85dvh) {
+  .review-panel { max-height: 85dvh; }
+}
+
+.review-panel::backdrop {
+  background: rgba(26, 22, 20, 0.44);   /* ink-900 기준 */
+}
+
+/* 배경 클릭 판정에 필요한 요소다 (UI-CONTRACT).
+   이 래퍼가 없으면 패널 자신의 여백을 눌러도 '바깥'으로 처리되어 닫힌다. */
+.review-panel__inner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;                /* flex 자식이 넘칠 때 스크롤이 생기게 하는 조건 */
+  padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .review-panel {
+    /* 태블릿부터 가운데 카드. inset을 모두 0으로 두고 margin: auto가 가운데로 민다 */
+    inset: 0;
+    width: calc(100% - 48px);
+    max-width: 520px;
+    max-height: 78vh;
+    margin: auto;
+    border-radius: var(--radius-lg);
+  }
+  .review-panel__inner { padding: 28px; }
+}
+
+@supports (max-height: 78dvh) {
+  @media (min-width: 768px) { .review-panel { max-height: 78dvh; } }
+}
+
+/* 모달이 떠 있는 동안 뒤 페이지가 따라 스크롤되지 않게 한다.
+   <dialog>의 모달 모드는 포커스만 가둘 뿐 배경 스크롤은 막아주지 않는다. */
+html:has(.review-panel[open]) { overflow: hidden; }
+
+/* --- 머리 --- */
+.review-panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.review-panel__name {
+  flex: 1;
+  min-width: 0;
+  /* 띄어쓰기 없는 긴 가게 이름이 375px에서 패널을 밀어내지 않게 */
+  overflow-wrap: anywhere;
+}
+
+.review-panel__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;             /* 터치 영역 (DESIGN 9장) */
+  margin-top: -10px;            /* 44px 터치 영역을 유지하면서 제목 줄에 시각적으로 맞춘다 */
+  padding: 0 12px;
+  color: var(--color-ink-700);  /* 흰 배경 9.81:1 */
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  transition: color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+}
+.review-panel__close:hover {
+  color: var(--color-ink-900);
+  border-color: var(--color-ink-300);
+}
+
+/* --- 본문 (여기만 스크롤한다) --- */
+.review-panel__body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  /* 스크롤이 패널 끝에서 뒤 페이지로 넘어가지 않게 */
+  overscroll-behavior: contain;
+  padding-top: 20px;
+  overflow-wrap: anywhere;
+}
+
+/* --- 별점 줄 --- */
+.review-panel__rating {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+/* ★는 이모지가 아니라 활자 문자(U+2605)라 본문 색과 굵기를 그대로 따른다.
+   금색을 칠하지 않는다 — 이 화면에서 색을 가진 것은 CTA뿐이다 (DESIGN 10장). */
+.review-panel__star { color: var(--color-ink-900); font-size: 15px; }
+
+.review-panel__score {
+  color: var(--color-ink-900);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.review-panel__count {
+  color: var(--color-ink-500);  /* 흰 배경 4.69:1 */
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* --- 리뷰 목록 --- */
+.review-list { margin-top: 20px; }
+
+.review-item {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.review-item:first-child { padding-top: 0; }
+.review-item:last-child  { padding-bottom: 0; border-bottom: 0; }
+
+.review-item__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.review-item__author {
+  color: var(--color-ink-900);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.review-item__rating {
+  color: var(--color-ink-700);  /* 흰 배경 9.81:1 */
+  font-size: 13px;
+  font-weight: 600;
+}
+.review-item__rating .review-panel__star { font-size: 13px; color: inherit; }
+
+/* 작성 시기는 가장 낮은 정보다. 오른쪽 끝으로 밀어 이름·별점과 층을 나눈다 */
+.review-item__time {
+  margin-left: auto;
+  color: var(--color-ink-500);  /* 흰 배경 4.69:1 */
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.review-item__text {
+  margin-top: 8px;
+  color: var(--color-ink-700);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.60;
+  letter-spacing: -0.01em;
+  /* 줄바꿈이 든 리뷰가 한 줄로 뭉치지 않게. 남의 글이라 길이를 예측할 수 없다 */
+  white-space: pre-wrap;
+}
+
+@media (min-width: 768px) {
+  .review-item__author,
+  .review-item__text { font-size: 16px; }
+}
+
+/* --- 상태 (불러오는 중 · 못 찾음 · 실패) ---
+   .search__status와 같은 규칙을 따른다 — 색만으로 구분하지 않는다. */
+.review-panel__status {
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.60;
+  letter-spacing: -0.01em;
+  border-radius: var(--radius-md);
+}
+
+.review-panel__status--loading,
+.review-panel__status--empty {
+  background: var(--color-surface-alt);
+  color: var(--color-ink-700);      /* surface-alt 위 9.27:1 */
+}
+
+/* 검색 로딩과 같은 점. 색이 아니라 움직임으로 진행 중임을 알린다 */
+.review-panel__status--loading::after {
+  content: "";
+  display: inline-block;
+  width: 4px; height: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+  border-radius: var(--radius-full);
+  background: var(--color-ink-500);
+  animation: status-pulse 1.2s var(--ease) infinite;
+}
+
+/* 실패 — 흰 바탕에 테두리와 왼쪽 굵은 띠. 형태로도 구별된다 */
+.review-panel__status--error {
+  background: var(--color-bg);
+  color: var(--color-error);        /* 흰 배경 6.54:1 */
+  font-weight: 600;
+  border: 1px solid var(--color-error);
+  border-left-width: 4px;
+}
+
+/* 상태 뒤에 링크가 이어질 때만 사이를 벌린다 */
+.review-panel__status + .review-panel__link { margin-top: 16px; }
+
+/* --- 바깥으로 나가는 링크 --- */
+.review-panel__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;                 /* 터치 영역 */
+  margin-top: 20px;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--dur-fast) var(--ease);
+}
+.review-panel__link:hover { color: var(--color-ink-900); }
+
+@keyframes review-panel-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (min-width: 768px) {
+  @keyframes review-panel-in {
+    from { opacity: 0; transform: scale(0.98); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+}
+
+/* ============================================================
    토스트
    표시 여부는 JS가 hidden 속성으로 제어한다.
    .toast의 display 선언이 [hidden]을 이기므로 아래 규칙이 반드시 필요하다.
@@ -440,7 +744,15 @@
    transform은 모두 제거하고 fade만 남긴다
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  .search__status--loading::after { animation: none; opacity: 1; }
+  .search__status--loading::after,
+  .review-panel__status--loading::after { animation: none; opacity: 1; }
+
+  /* 패널도 transform을 빼고 fade만 남긴다 */
+  .review-panel { animation: review-panel-fade-in var(--dur-base) var(--ease) both; }
+  @keyframes review-panel-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
 
   .search__submit:active,
   .place-card__save:active { transform: none; }

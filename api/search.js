@@ -16,6 +16,8 @@ const KAKAO_ENDPOINT = "https://dapi.kakao.com/v2/local/search/keyword.json";
 const KAKAO_TIMEOUT = 5000; // ms
 
 // 프론트가 쓰는 필드만 추려 내려보낸다. 카카오 원본을 그대로 흘리지 않는다.
+// x(경도)·y(위도)는 /api/reviews가 locationBias로 쓴다 — 좌표가 없으면
+// 같은 이름의 다른 지역 가게 리뷰가 붙는다 (UI-CONTRACT 「/api/search 응답 봉투」).
 const PLACE_FIELDS = [
   "id",
   "place_name",
@@ -24,6 +26,8 @@ const PLACE_FIELDS = [
   "address_name",
   "distance",
   "place_url",
+  "x",
+  "y",
 ];
 
 // 카카오 size/page 허용 범위 (문서 기준)

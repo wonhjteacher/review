@@ -21,20 +21,22 @@ PORT=8080 python3 server.py      # 포트 변경
 `/api/search` 한 경로만 가로채 카카오 로컬 API로 중계한다. 표준 라이브러리만 쓴다 — `pip install` 금지.
 
 **랜딩페이지(`index.html`)만 볼 때는 여전히 `file://`로 열어도 된다.**
-담기 페이지(`save.html`)는 `fetch('/api/search')`를 쓰므로 반드시 서버로 띄워야 한다.
+담기 페이지(`save.html`)는 `fetch('/api/search')`·`fetch('/api/reviews')`를 쓰므로 반드시 서버로 띄워야 한다.
 
 `gh` CLI는 Homebrew가 아니라 `~/.local/bin/gh`에 직접 설치되어 있다.
 
 ### 배포 (Vercel)
 
-`/api/search`의 구현이 **둘이다.** 로컬은 `server.py`, 배포는 `api/search.js`.
+API 경로의 구현이 **둘씩이다.** 로컬은 `server.py`, 배포는 `api/*.js`.
 
 ```
-server.py        로컬 개발 — 정적 서빙 + 프록시. 파이썬 표준 라이브러리만
-api/search.js    배포 — Vercel 서버리스 함수. 의존성 없음(전역 fetch), CommonJS
+server.py        로컬 개발 — 정적 서빙 + 프록시 둘 다. 파이썬 표준 라이브러리만
+api/search.js    배포 — 카카오 검색.  Vercel 서버리스 함수. 의존성 없음(전역 fetch), CommonJS
+api/reviews.js   배포 — 구글 리뷰.    같음
 ```
 
-**둘은 같은 계약을 지켜야 한다** — 사양은 `UI-CONTRACT.md`「/api/search 응답 봉투」다.
+**짝지어진 둘은 같은 계약을 지켜야 한다** — 사양은 `UI-CONTRACT.md`의
+「/api/search 응답 봉투」와 「/api/reviews 응답 봉투」다.
 한쪽만 고치면 로컬에서는 되는데 배포에서 깨진다. 고쳤으면 아래로 대조한다:
 
 ```bash
@@ -45,7 +47,9 @@ node -e '…' # 두 응답의 JSON.stringify를 직접 비교 — 바이트 단�
 
 `.vercelignore`가 `server.py`를 배포에서 뺀다. 빼지 않으면 Vercel이 정적 파일로 취급해 **소스를 그대로 내려준다.**
 
-**Vercel 환경변수에 `KAKAO_REST_API_KEY`를 등록해야 한다.** `.env`는 배포에 올라가지 않는다.
+**Vercel 환경변수에 `KAKAO_REST_API_KEY`와 `GOOGLE_PLACES_KEY`를 등록해야 한다.**
+`.env`는 배포에 올라가지 않는다. 로컬에서 리뷰를 보려면 `.env`에도 `GOOGLE_PLACES_KEY`가 있어야 한다.
+한쪽 키가 없으면 그 경로만 `503`을 돌려주고 나머지는 정상 동작한다.
 
 ## 문서가 사양이다
 
@@ -70,8 +74,12 @@ Phase 1 — 맛집 담기
 server.py    정적 서버 + /api/search 카카오 프록시. 표준 라이브러리만
 save.html    담기 페이지 마크업. 클래스 이름은 UI-CONTRACT.md에 고정되어 있다
 save.css     담기 페이지 전용 스타일. style.css 다음에 로드된다
-save.js      검색·렌더·담기 상태 관리
-storage.js   localStorage 래퍼. 막힌 환경에서는 메모리로 폴백한다
+save.js      검색·렌더·담기 상태 관리 + 구글 리뷰 패널
+storage.js   localStorage 래퍼(담아둔 곳). 막힌 환경에서는 메모리로 폴백한다
+
+Phase 1 — 구글 리뷰
+api/reviews.js   배포 — 구글 Places API (New) 프록시. server.py의 handle_reviews()와 같은 계약
+review-cache.js  sessionStorage 래퍼(조회한 리뷰). 무료 한도를 지키는 장치다
 .env         API 키. gitignore 대상 — 절대 커밋하지 않는다
 ```
 
@@ -192,6 +200,43 @@ for (const s of ["visited", "wish"])
 키가 없어도 서버는 뜨고 정적 파일은 서빙된다. `/api/search`만 `503` + `검색 서버 설정이 아직 안 됐어요`를 돌려준다.
 **에러 경로를 검증할 때는 `unset KAKAO_REST_API_KEY`만으로 부족하다** — `.env`가 있으면 그쪽에서 읽어간다.
 
+### ⑪ 구글 리뷰의 FieldMask를 늘리지 않는다
+
+Places API (New)는 **요청한 필드에 따라 과금 등급이 올라간다.** 두 구현이 같은 5개로 고정되어 있다:
+
+```
+places.displayName, places.rating, places.userRatingCount, places.reviews, places.googleMapsUri
+```
+
+`languageCode`·`regionCode`는 FieldMask가 아니라 **요청 본문 필드**라 등급에 영향이 없다. 이 둘은 한국어 리뷰를 받기 위한 것이다.
+
+**신버전 방식만 쓴다** — 키는 `X-Goog-Api-Key` 헤더, 필드는 `X-Goog-FieldMask` 헤더, 메서드는 POST.
+URL에 `?key=`를 붙이는 구버전 GET으로 돌아가지 않는다.
+
+### ⑫ 리뷰 캐시는 무료 한도를 지키는 장치다
+
+구글 리뷰는 **월 1,000건까지만 무료다.** `review-cache.js`가 조회 결과를 sessionStorage에 넣어
+같은 가게를 다시 열 때 네트워크를 타지 않게 한다. `save.js`가 `sessionStorage`를 직접 만지지 않는다.
+
+캐시하는 것과 안 하는 것이 갈린다 — **의도적이다:**
+
+- **넣는다** — 성공, 그리고 `not_found`.
+  `not_found`야말로 캐시가 필요한 쪽이다. 구글에 없는 가게를 연타하면 '없다'를 확인하는 호출만으로 한도가 닳는다
+- **안 넣는다** — 타임아웃·업스트림 오류·키 없음·네트워크 실패.
+  전부 시간이 지나면 풀리는 상태다. 캐시하면 키를 고쳐도 탭을 새로 열기 전까지 고쳐지지 않은 것처럼 보인다
+
+`localStorage`가 아니라 `sessionStorage`인 것도 의도다. 리뷰는 남의 데이터라 낡는다 —
+영속시키면 몇 달 전 리뷰를 새것처럼 보여준다. 담아둔 곳(`storage.js`)은 사용자 본인의 의도라 반대로 영속시킨다.
+
+### ⑬ 좌표는 `x`가 경도, `y`가 위도다
+
+`/api/search`가 카카오 원본 그대로 문자열로 내려보내고, `/api/reviews`가 `locationBias`로 쓴다.
+**뒤집어도 에러가 나지 않는다** — 지구 반대편을 가리켜 조용히 `not_found`가 될 뿐이라 찾기 어렵다.
+
+JS 쪽에서 빈 문자열을 먼저 걸러내는 줄을 지우지 말 것. **`Number("")`는 `NaN`이 아니라 `0`이다** —
+좌표 없는 요청이 위도 0·경도 0(기니만 앞바다)으로 통과한다.
+파이썬은 `float("")`가 `ValueError`를 내므로 이 함정이 없다. **두 구현을 나란히 태워보지 않으면 드러나지 않는다.**
+
 ## 검증
 
 테스트 프레임워크가 없으므로 브라우저 콘솔에서 확인한다.
@@ -211,6 +256,27 @@ for (const s of ["visited", "wish"])
 - 에러 3경로를 실제로 태운다 — 키 없음(503) · 빈 검색어(400) · 네트워크 실패(`.catch`)
 - `storage.js`는 localStorage가 막힌 환경에서 메모리로 폴백한다. 사파리 프라이빗 모드에서 확인한다
 
+**구글 리뷰 (Phase 1)**
+
+- 두 구현을 나란히 태워 **에러 봉투가 같은지** 본다. 키가 없어도 여기까지는 전부 검증된다:
+  이름 없음(400) · 좌표 없음(400) · 좌표가 숫자 아님(400) · 위도 범위 밖(400) · 키 없음(503)
+  ```bash
+  curl -s "http://127.0.0.1:8000/api/reviews?name=%EA%B0%80%EA%B2%8C"   # server.py
+  # api/reviews.js는 req/res를 흉내내는 10줄짜리 하네스로 직접 require해서 돌린다
+  ```
+- 패널은 `window.fetch`를 가로채 구글 응답을 흉내내면 **키 없이도 전 경로를 검증할 수 있다.**
+  `save.js`가 `window.fetch(...)`로 호출하므로 덮어쓰기가 먹는다
+- 캐시 정책을 실제로 잰다 — 성공·`not_found`는 재호출 0건, 서버 오류는 재호출 1건
+  (`window.ReviewCache.get(id)`로 직접 확인한다. `sessionStorage`를 직접 읽으면 도구가 막을 수 있다)
+- 좌표가 뒤집히지 않았는지 나간 요청으로 확인한다 — 서울이면 `x≈127`(경도) · `y≈37.5`(위도)
+
+**주의:** iframe으로 반응형을 잴 때 리뷰 패널은 **애니메이션이 조여져 `from` 상태(`translateY(16px)`)에 멈춘다.**
+`animation: ... both`라서 시작 프레임이 그대로 남는 것이다. 레이아웃만 잴 때는
+`panel.style.animation = 'none'`으로 끄고 측정한다. 끄지 않으면 16px 어긋난 값을 버그로 오인한다.
+
+**주의:** `sessionStorage`는 같은 출처의 **프레임끼리 공유된다.** 검증용 iframe이 본 페이지가 남긴
+리뷰 캐시를 그대로 물려받아 stub이 호출되지 않는다. iframe에서 먼저 캐시를 비우고 시작한다.
+
 **주의:** 브라우저 탭이 백그라운드면 Chrome이 `setTimeout`을 심하게 조인다(250ms → 1200ms 이상 관측). 자동화 검증에서 고정 `sleep` 대신 **조건 폴링**을 쓴다.
 
 ## 범위 밖 (Phase 0~1)
@@ -218,7 +284,8 @@ for (const s of ["visited", "wish"])
 로그인, 서버 DB, 방문 기록, 리뷰 리스트, 대시보드, Gemini API, Supabase, 사전 신청 이메일 수집.
 로드맵은 PRD 7장 참고.
 
-**Phase 1에서 범위 안으로 들어온 것** — 맛집 담기(F1). 카카오 로컬 API 검색과 localStorage 저장이 붙었다.
+**Phase 1에서 범위 안으로 들어온 것** — 맛집 담기(F1)와 구글 리뷰 보기.
+카카오 로컬 API 검색, localStorage 저장, 구글 Places API (New) 리뷰 조회가 붙었다.
 다만 저장은 **브라우저 로컬뿐이다.** 기기를 옮기면 목록이 따라가지 않는다. 계정 기반 영속 저장은 F7(로그인)의 일이다.
 
 체험 데모의 `PLACES`는 여전히 하드코딩이고 담기 목록과 **연결되어 있지 않다.**

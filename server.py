@@ -14,7 +14,12 @@
     PORT=8080 python3 server.py
 
 기존 `python3 -m http.server 8000`을 대체한다. 정적 파일은 그대로 서빙하고
-`/api/search` 한 경로만 가로채 카카오 로컬 API로 중계한다.
+두 경로만 가로채 외부 API로 중계한다.
+
+    /api/search    카카오 로컬 API  (KAKAO_REST_API_KEY)
+    /api/reviews   구글 Places API (New) 리뷰  (GOOGLE_PLACES_KEY)
+
+키가 없는 쪽은 그 경로만 503을 돌려주고, 나머지는 정상 동작한다.
 
 API 키는 환경변수 또는 `.env`에서만 읽는다. 코드·HTML·JS 어디에도 키를 넣지 않는다 (PRD 8장).
 프록시가 존재하는 이유가 바로 이것이다 — 브라우저로 키를 내려보내지 않기 위해서다.
@@ -40,7 +45,27 @@ ENV_FILE = os.path.join(ROOT, ".env")
 KAKAO_ENDPOINT = "https://dapi.kakao.com/v2/local/search/keyword.json"
 KAKAO_TIMEOUT = 5  # 초
 
+GOOGLE_ENDPOINT = "https://places.googleapis.com/v1/places:searchText"
+GOOGLE_TIMEOUT = 6  # 초 — 검색보다 조금 넉넉하다. 리뷰 본문까지 실려 온다
+
+# 요청 필드가 늘어나면 과금 등급이 함께 올라간다 (Places API는 FieldMask 단위 과금이다).
+# **이 5개에서 늘리지 않는다.** searchText는 응답이 places[]이므로 `places.` 접두사가 필요하다.
+GOOGLE_FIELD_MASK = ",".join(
+    (
+        "places.displayName",
+        "places.rating",
+        "places.userRatingCount",
+        "places.reviews",
+        "places.googleMapsUri",
+    )
+)
+
+# 오매칭 방지. 이름이 같은 가게가 전국에 있으므로 카카오 좌표 반경 안으로 가둔다.
+BIAS_RADIUS_M = 150
+
 # 프론트가 쓰는 필드만 추려 내려보낸다. 카카오 원본을 그대로 흘리지 않는다.
+# x(경도)·y(위도)는 /api/reviews가 locationBias로 쓴다 — 좌표가 없으면
+# 같은 이름의 다른 지역 가게 리뷰가 붙는다 (UI-CONTRACT 「/api/search 응답 봉투」).
 PLACE_FIELDS = (
     "id",
     "place_name",
@@ -49,6 +74,8 @@ PLACE_FIELDS = (
     "address_name",
     "distance",
     "place_url",
+    "x",
+    "y",
 )
 
 # 카카오 size/page 허용 범위 (문서 기준)
@@ -103,6 +130,9 @@ class AppHandler(SimpleHTTPRequestHandler):
         if path == "/api/search":
             self.handle_search()
             return
+        if path == "/api/reviews":
+            self.handle_reviews()
+            return
         if self.is_hidden_path(path):
             # .git, .claude 같은 숨김 경로는 내려보내지 않는다.
             self.send_error(404, "Not Found")
@@ -111,7 +141,7 @@ class AppHandler(SimpleHTTPRequestHandler):
 
     def do_HEAD(self):
         path = urllib.parse.urlparse(self.path).path
-        if path == "/api/search":
+        if path in ("/api/search", "/api/reviews"):
             # 본문 없이 상태만 확인하는 경우. 프록시는 GET으로만 쓴다.
             self.send_response(405)
             self.send_header("Allow", "GET")
@@ -220,6 +250,98 @@ class AppHandler(SimpleHTTPRequestHandler):
             "total_count": meta.get("total_count", 0),
         }
 
+    # --- 구글 리뷰 프록시 -------------------------------------------
+
+    def handle_reviews(self):
+        """구글 Places API (New)로 가게 하나의 리뷰를 가져온다.
+
+        `api/reviews.js`(Vercel)와 **같은 계약을 지킨다.**
+        사양은 UI-CONTRACT.md 「/api/reviews 응답 봉투」다. 한쪽만 고치지 않는다.
+        """
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+
+        name = (params.get("name", [""])[0] or "").strip()
+        if not name:
+            self.send_json(400, error_body("empty_query", "가게 이름이 없어요"))
+            return
+
+        center = to_coords(params.get("x", [""])[0], params.get("y", [""])[0])
+        if center is None:
+            self.send_json(400, error_body("bad_coords", "가게 위치를 알 수 없어요"))
+            return
+
+        api_key = (os.environ.get("GOOGLE_PLACES_KEY") or "").strip()
+        if not api_key:
+            self.send_json(503, error_body("no_api_key", "리뷰 서버 설정이 아직 안 됐어요"))
+            return
+
+        status, body = self.call_google(api_key, name, center)
+        self.send_json(status, body)
+
+    def call_google(self, api_key, name, center):
+        """구글 호출. 어떤 실패든 (상태코드, 정규화된 JSON) 한 쌍으로 돌려준다."""
+        payload = {
+            "textQuery": name,
+            # 반경 밖은 아예 후보에서 빠진다. 이름만으로 전국을 뒤지지 않게 하는 장치다.
+            "locationBias": {"circle": {"center": center, "radius": BIAS_RADIUS_M}},
+            "maxResultCount": 1,
+            # FieldMask가 아니라 요청 본문 필드다 — 과금 등급에 영향을 주지 않는다.
+            # 한국어 리뷰와 "3개월 전" 같은 한국어 시점 문구를 받기 위한 것이다.
+            "languageCode": "ko",
+            "regionCode": "KR",
+        }
+
+        request = urllib.request.Request(
+            GOOGLE_ENDPOINT,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                # 신버전 방식이다. URL에 ?key= 를 붙이는 구버전으로 돌아가지 않는다.
+                "X-Goog-Api-Key": api_key,
+                "X-Goog-FieldMask": GOOGLE_FIELD_MASK,
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=GOOGLE_TIMEOUT, context=SSL_CONTEXT) as response:
+                raw = response.read()
+        except urllib.error.HTTPError as exc:
+            # 키·FieldMask 문제는 전부 여기로 떨어진다. 본문에 원인이 적혀 있으므로 로그에 남긴다.
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", "replace")[:500]
+            except OSError:
+                pass
+            self.log_message("google HTTPError %s %s", exc.code, detail)
+            return 502, error_body("upstream_http", google_http_message(exc.code))
+        except urllib.error.URLError as exc:
+            self.log_message("google URLError %s", exc.reason)
+            return 502, error_body("upstream_unreachable", "리뷰 서버에 연결하지 못했어요")
+        except TimeoutError:
+            self.log_message("google timeout")
+            return 504, error_body(
+                "upstream_timeout",
+                "리뷰를 불러오는 데 오래 걸려서 멈췄어요. 잠시 뒤에 다시 해주세요",
+            )
+        except OSError as exc:
+            self.log_message("google OSError %s", exc)
+            return 502, error_body("upstream_unreachable", "리뷰 서버에 연결하지 못했어요")
+
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            self.log_message("google 응답을 JSON으로 읽지 못함")
+            return 502, error_body("upstream_bad_json", "리뷰를 읽지 못했어요")
+
+        # 결과가 없으면 구글은 places 배열이 아니라 **빈 객체 {}** 를 준다. 둘 다 받아준다.
+        places = body.get("places")
+        place = next((p for p in places if isinstance(p, dict)), None) if isinstance(places, list) else None
+        if place is None:
+            return 404, error_body("not_found", "구글 리뷰를 찾지 못했어요")
+
+        return 200, {"ok": True, "place": shape_place(place)}
+
     # --- 응답 -------------------------------------------------------
 
     def send_json(self, status, payload):
@@ -274,6 +396,82 @@ def pick_fields(doc):
     return {key: doc.get(key, "") for key in PLACE_FIELDS}
 
 
+def to_coords(raw_x, raw_y):
+    """카카오는 좌표를 문자열로 준다. 숫자로 바꾸고 범위까지 확인한다.
+
+    x가 경도(longitude), y가 위도(latitude)다 — **순서를 뒤집기 쉽다.**
+    뒤집으면 에러가 아니라 지구 반대편을 가리키므로 조용히 not_found가 된다.
+    """
+    try:
+        lng = float(str(raw_x or "").strip())
+        lat = float(str(raw_y or "").strip())
+    except (TypeError, ValueError):
+        return None
+    if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lng <= 180.0):
+        return None
+    return {"latitude": lat, "longitude": lng}
+
+
+def google_text(value):
+    """displayName·text는 { text, languageCode } 꼴로 온다. 문자열로 오는 경우도 받아준다."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict) and isinstance(value.get("text"), str):
+        return value["text"]
+    return ""
+
+
+def shape_review(review):
+    """구글 원본을 프론트가 쓰는 모양으로 눕힌다. 원본을 그대로 흘리지 않는다."""
+    if not isinstance(review, dict):
+        return None
+    author = review.get("authorAttribution") or {}
+    # text는 번역본, originalText는 작성 언어 원문이다. 번역본을 우선한다.
+    body = google_text(review.get("text")) or google_text(review.get("originalText"))
+    if not body:
+        return None
+    rating = review.get("rating")
+    return {
+        "author": google_text(author.get("displayName")) or "구글 이용자",
+        "rating": rating if isinstance(rating, (int, float)) and not isinstance(rating, bool) else None,
+        "text": body,
+        "relative_time": str(review.get("relativePublishTimeDescription") or ""),
+    }
+
+
+def shape_place(place):
+    raw_reviews = place.get("reviews")
+    reviews = []
+    if isinstance(raw_reviews, list):
+        for item in raw_reviews:
+            shaped = shape_review(item)
+            if shaped:
+                reviews.append(shaped)
+
+    rating = place.get("rating")
+    count = place.get("userRatingCount")
+    uri = place.get("googleMapsUri")
+    return {
+        "name": google_text(place.get("displayName")),
+        "rating": rating if isinstance(rating, (int, float)) and not isinstance(rating, bool) else None,
+        "user_rating_count": count if isinstance(count, int) and not isinstance(count, bool) else 0,
+        "google_maps_uri": uri if isinstance(uri, str) else "",
+        "reviews": reviews,
+    }
+
+
+def google_http_message(status):
+    if status == 400:
+        return "리뷰 조회 조건을 확인해 주세요"
+    if status in (401, 403):
+        return "리뷰 서버 인증에 문제가 있어요"
+    if status == 429:
+        return "리뷰 요청이 많아요. 잠시 뒤에 다시 해주세요"
+    if 400 <= status < 500:
+        return "리뷰를 불러오지 못했어요"
+    return "리뷰 서버가 잠시 불안정해요. 잠시 뒤에 다시 해주세요"
+
+
 def kakao_http_message(status):
     if status in (401, 403):
         return "검색 서버 인증에 문제가 있어요"
@@ -295,6 +493,15 @@ def main():
             "/api/search는 설정 안내 에러만 돌려줍니다.\n"
             "  %s 파일에 KAKAO_REST_API_KEY 값을 채우거나,\n"
             "  KAKAO_REST_API_KEY=발급받은_REST_API_키 python3 server.py 로 실행하세요." % ENV_FILE,
+            file=sys.stderr,
+        )
+
+    if not (os.environ.get("GOOGLE_PLACES_KEY") or "").strip():
+        print(
+            "GOOGLE_PLACES_KEY가 없습니다. 검색은 되지만\n"
+            "/api/reviews는 설정 안내 에러만 돌려줍니다 (리뷰 패널에 안내 문구가 뜹니다).\n"
+            "  %s 파일에 GOOGLE_PLACES_KEY 값을 채우세요.\n"
+            "  배포(Vercel)는 대시보드 환경변수에서 따로 설정합니다." % ENV_FILE,
             file=sys.stderr,
         )
 
