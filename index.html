@@ -14,6 +14,10 @@
 </head>
 <body>
 
+<!-- 로그인 (UI-CONTRACT 「.site-auth」). 비워둔다 — auth.js가 상태에 따라 채운다.
+     세션 복원 전에는 일부러 비어 있다: 로그인한 사용자에게 로그인 버튼이 깜빡이지 않게. -->
+<div class="site-auth" id="site-auth"></div>
+
 <!-- ① Hero — PC에서 2단 (카피 | 결과 카드 미리보기) -->
 <section id="hero" class="section section--bg hero">
   <div class="container container--wide hero__grid">
@@ -167,6 +171,45 @@
   </div>
 </footer>
 
+<!-- 로그인 창 (UI-CONTRACT 「.auth-dialog」)
+     <dialog>인 이유는 .review-panel과 같다 — showModal()이 포커스 가둠·Esc 닫기·
+     배경 비활성을 브라우저에게서 공짜로 준다. 직접 만든 오버레이로 대체하지 않는다.
+     novalidate인 이유 — 브라우저 기본 말풍선 대신 `~해요`체 문구를 쓰기 위해서다. -->
+<dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-dialog-title">
+  <div class="auth-dialog__inner">
+    <header class="auth-dialog__head">
+      <h2 class="h2 auth-dialog__title" id="auth-dialog-title">로그인</h2>
+      <button type="button" class="auth-dialog__close" data-action="close-auth" aria-label="닫기">닫기</button>
+    </header>
+
+    <form class="auth-dialog__form" id="auth-form" novalidate>
+      <div class="auth-dialog__field">
+        <label class="auth-dialog__label" for="auth-email">이메일</label>
+        <input class="auth-dialog__input" id="auth-email" type="email" name="email"
+               autocomplete="email" placeholder="you@example.com">
+      </div>
+      <div class="auth-dialog__field">
+        <label class="auth-dialog__label" for="auth-password">비밀번호</label>
+        <input class="auth-dialog__input" id="auth-password" type="password" name="password"
+               autocomplete="current-password" placeholder="6자 이상">
+      </div>
+
+      <p class="auth-dialog__status" id="auth-status" role="status" aria-live="polite"></p>
+
+      <div class="auth-dialog__actions">
+        <button type="submit" class="auth-dialog__submit">로그인</button>
+        <button type="button" class="auth-dialog__signup" data-action="sign-up">회원가입</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Supabase 인증 (UMD 번들 — 이 프로젝트는 빌드 도구가 없다).
+     버전을 고정한다: wordcloud·pretendard와 같은 방식이다.
+     이 줄이 막히면 auth.js가 .site-auth__error를 그리고, 담기만 막힌다.
+     검색·리뷰·분석은 로그인과 무관하게 그대로 돈다. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"></script>
+<script src="auth.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

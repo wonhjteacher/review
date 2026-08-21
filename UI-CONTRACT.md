@@ -501,6 +501,150 @@ Content-Type: application/json
 
 ---
 
+## `.site-auth` — 오른쪽 위 로그인 영역 (`<body>` 직속, **맨 앞**)
+
+두 페이지에 **똑같이** 들어간다. 마크업은 HTML에 비워두고 `auth.js`가 상태에 따라 채운다.
+
+```html
+<div class="site-auth" id="site-auth"></div>
+```
+
+`auth.js`가 그리는 두 가지 모양이다. **셋 중 하나만 화면에 있다.**
+
+```html
+<!-- ① 로그아웃 상태 -->
+<button type="button" class="site-auth__button" data-action="open-auth">로그인</button>
+
+<!-- ② 로그인 상태 -->
+<span class="site-auth__user">길동님</span>
+<button type="button" class="site-auth__signout" data-action="sign-out">로그아웃</button>
+
+<!-- ③ 인증 모듈을 못 불러온 상태 (CDN 차단 등) -->
+<span class="site-auth__error">로그인 기능을 불러오지 못했어요</span>
+```
+
+**세션 복원이 끝나기 전에는 아무것도 그리지 않는다.** `localStorage`에서 세션을 되살리는 데
+한 틱이 걸리는데, 그동안 `로그인`을 그려두면 **로그인한 사용자에게 로그인 버튼이 깜빡인다.**
+
+`.site-auth__user`의 이름은 **이메일의 `@` 앞부분**이다. 가입 폼이 이메일·비밀번호만 받기 때문이다.
+
+---
+
+## `.auth-dialog` — 로그인 창 (`<body>` 직속, `.toast` 앞)
+
+`.review-panel`과 **같은 이유로 `<dialog>`다** — `showModal()`이 포커스 가둠·Esc 닫기·배경
+비활성을 브라우저에게서 공짜로 준다. 직접 만든 오버레이로 대체하지 않는다.
+
+```html
+<dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-dialog-title">
+  <div class="auth-dialog__inner">
+    <header class="auth-dialog__head">
+      <h2 class="h2 auth-dialog__title" id="auth-dialog-title">로그인</h2>
+      <button type="button" class="auth-dialog__close" data-action="close-auth" aria-label="닫기">닫기</button>
+    </header>
+
+    <form class="auth-dialog__form" id="auth-form" novalidate>
+      <div class="auth-dialog__field">
+        <label class="auth-dialog__label" for="auth-email">이메일</label>
+        <input class="auth-dialog__input" id="auth-email" type="email" name="email"
+               autocomplete="email" placeholder="you@example.com">
+      </div>
+      <div class="auth-dialog__field">
+        <label class="auth-dialog__label" for="auth-password">비밀번호</label>
+        <input class="auth-dialog__input" id="auth-password" type="password" name="password"
+               autocomplete="current-password" placeholder="6자 이상">
+      </div>
+
+      <p class="auth-dialog__status" id="auth-status" role="status" aria-live="polite"></p>
+
+      <div class="auth-dialog__actions">
+        <button type="submit" class="auth-dialog__submit">로그인</button>
+        <button type="button" class="auth-dialog__signup" data-action="sign-up">회원가입</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+```
+
+`.auth-dialog__status`는 `.search__status`와 같은 규칙이다 — 상태 modifier로 색만 바꾼다.
+
+| 클래스 | 쓰임 |
+|---|---|
+| `.auth-dialog__status--error` | 실패 안내. `--color-error` |
+| `.auth-dialog__status--info` | 메일 확인 안내 등. `--color-ink-700` |
+| `.auth-dialog__status--loading` | 처리 중. 버튼도 함께 `disabled` |
+
+**`novalidate`를 지운다면 안내 문구가 브라우저 기본 말풍선에 가려진다.**
+이메일·비밀번호 검사를 우리가 직접 해서 `~해요`체로 보여주려는 것이다 (DESIGN 7장).
+
+---
+
+## 안내 문구 — Supabase 오류를 한국어로 옮기는 표
+
+**`error.code`로 가른다. `message`는 영어이고 버전에 따라 문구가 바뀐다.**
+아래 코드는 실제 프로젝트에 요청을 태워 받아낸 값이다.
+
+| `error.code` | HTTP | 화면 문구 |
+|---|---|---|
+| `invalid_credentials` | 400 | `이메일 또는 비밀번호가 맞지 않아요` |
+| `user_already_exists` · `email_exists` | 422 | `이미 가입된 이메일이에요. 로그인해주세요` |
+| `weak_password` | 422 | `비밀번호는 6자 이상이어야 해요` |
+| `validation_failed` | 400 | `이메일 형식이 올바르지 않아요` |
+| `email_not_confirmed` | 400 | `메일함에서 인증을 먼저 완료해주세요` |
+| `over_email_send_rate_limit` · `over_request_rate_limit` | 429 | `요청이 많아요. 잠시 뒤에 다시 해주세요` |
+| 그 밖 | — | `로그인에 실패했어요. 잠시 뒤에 다시 해주세요` |
+
+**`invalid_credentials`를 「가입되지 않은 이메일이에요」로 옮기지 않는다.**
+Supabase는 비밀번호 오류와 미가입 계정에 **같은 코드를 돌려준다** — 어느 이메일이 가입돼
+있는지 알아내지 못하게 하려는 의도적 설계다. 둘을 나눠 안내하면 그 방어가 무너진다.
+
+---
+
+## `window.Auth` — 로그인 상태를 다른 기능이 가져다 쓰는 창구
+
+담당은 `auth.js` 하나뿐이다. **다른 파일이 `window.supabase`를 직접 만지지 않는다** —
+`storage.js`·`review-cache.js`와 같은 규칙이다.
+
+| 이름 | 반환 | 설명 |
+|---|---|---|
+| `Auth.ready` | `Promise<void>` | 최초 세션 복원이 끝나면 resolve. **실패해도 resolve된다** |
+| `Auth.isReady()` | `boolean` | 복원이 끝났는지 |
+| `Auth.isAvailable()` | `boolean` | 인증 모듈을 불러왔는지. CDN이 막히면 `false` |
+| `Auth.getUser()` | `{id,email,name}` \| `null` | **동기.** 복원 전에는 항상 `null` |
+| `Auth.isSignedIn()` | `boolean` | 동기 |
+| `Auth.onChange(fn)` | `() => void` | 구독. **등록 즉시 현재 상태로 한 번 호출된다.** 반환값은 해제 함수 |
+| `Auth.requireSignIn(reason)` | `boolean` | 로그인돼 있으면 `true`. 아니면 창을 띄우고 `false` |
+| `Auth.open(reason)` / `Auth.close()` | — | 창 열고 닫기 |
+| `Auth.signOut()` | `Promise<void>` | |
+
+**로그인 여부에 따라 달라지는 UI는 `getUser()`를 직접 읽지 말고 `onChange`로 그린다.**
+`getUser()`는 복원 전에 `null`이라, 페이지 로드 직후에 읽으면 **로그인한 사용자를 비로그인으로 본다.**
+`onChange`는 등록 즉시 한 번 호출되고 복원이 끝나면 다시 호출되므로 두 시점이 모두 덮인다.
+
+```js
+// 이렇게 쓴다
+window.Auth.onChange(function (user) { render(user); });
+
+// 이렇게 쓰지 않는다 — 새로고침 직후 항상 비로그인으로 보인다
+if (window.Auth.isSignedIn()) { … }
+```
+
+---
+
+## `.saved__locked` — 로그인해야 담을 수 있다는 안내
+
+담기는 **로그인한 사람만** 쓴다. 검색·리뷰·분석은 로그인 없이 그대로 쓴다.
+
+```html
+<p class="saved__locked">로그인하면 마음에 든 곳을 담아둘 수 있어요</p>
+```
+
+`.saved-list`를 **지우지 않고** 이 문단을 위에 둔다. 이미 담아둔 목록이 있는 사용자의
+데이터를 화면에서 없애지 않기 위해서다 — 저장은 아직 브라우저 로컬(`storage.js`)이고
+계정과 묶여 있지 않다. 계정 기반 저장은 F7 다음 단계다.
+
+---
+
 ## 지켜야 할 공통 사항
 
 **카피 (CLAUDE.md ③ · DESIGN 7장)**

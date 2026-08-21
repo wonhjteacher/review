@@ -227,11 +227,32 @@
     results.appendChild(fragment);
   }
 
+  /* 로그인해야 담을 수 있다는 안내 (UI-CONTRACT 「.saved__locked」).
+     .saved-list를 지우지 않고 위에 문단만 얹는다 — 이미 담아둔 목록이 있는
+     사용자의 데이터를 화면에서 없애지 않기 위해서다. 저장은 아직 브라우저
+     로컬(storage.js)이고 계정과 묶여 있지 않다. */
+  function renderLocked() {
+    var section = savedList.parentNode;
+    var existing = section.querySelector('.saved__locked');
+    var signedIn = !!(window.Auth && window.Auth.isSignedIn());
+
+    if (signedIn) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing) return;
+
+    var note = el('p', 'saved__locked', '로그인하면 마음에 든 곳을 담아둘 수 있어요');
+    savedList.parentNode.insertBefore(note, savedList);
+  }
+
   function renderSaved() {
     var list = window.SavedPlaces.list();
 
     savedCount.textContent = String(list.length);
     savedList.textContent = '';
+
+    renderLocked();
 
     var fragment = document.createDocumentFragment();
     for (var i = 0; i < list.length; i += 1) {
@@ -819,9 +840,17 @@
     var id = card.dataset.kakaoId;
 
     if (window.SavedPlaces.has(id)) {
+      /* 해제는 막지 않는다. 이미 담아둔 것은 본인 데이터이고,
+         저장이 아직 브라우저 로컬이라 계정과 묶여 있지도 않다.
+         로그인 게이트는 **새로 담는 쪽**에만 세운다. */
       window.SavedPlaces.remove(id);
       showToast('담기를 해제했어요');
     } else {
+      /* 담기는 로그인한 사람만 (UI-CONTRACT 「window.Auth」).
+         requireSignIn이 false면 로그인 창까지 이미 띄운 뒤다. */
+      if (window.Auth && !window.Auth.requireSignIn('로그인하면 이 가게를 담아둘 수 있어요')) {
+        return;
+      }
       var place = placesById[id];
       if (!place) return;
       window.SavedPlaces.add({
@@ -894,4 +923,13 @@
 
   renderSaved();
   setStatus(null);
+
+  /* 로그인 상태에 따라 안내 문단이 붙고 떨어진다.
+     **isSignedIn()을 직접 읽지 않고 onChange로 그린다** — 세션 복원이 비동기라
+     페이지 로드 직후에 읽으면 로그인한 사용자를 비로그인으로 본다
+     (UI-CONTRACT 「window.Auth」). onChange는 등록 즉시 한 번,
+     복원이 끝나면 다시 호출되므로 두 시점이 모두 덮인다. */
+  if (window.Auth) {
+    window.Auth.onChange(function () { renderLocked(); });
+  }
 })();

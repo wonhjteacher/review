@@ -552,3 +552,212 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================================
+   로그인 (UI-CONTRACT 「.site-auth」·「.auth-dialog」)
+   두 페이지가 공유하므로 save.css가 아니라 여기에 둔다.
+   ============================================================ */
+
+/* .site-auth — 오른쪽 위 고정
+   fixed인 이유: index.html은 섹션이 이어지는 긴 페이지고 save.html은
+   .container--wide가 본문을 가운데로 모은다. 문서 흐름에 넣으면 두 페이지에서
+   서로 다른 자리에 놓인다. 화면 기준으로 고정하면 둘이 같아진다. */
+.site-auth {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 비어 있을 때(세션 복원 전) 투명한 사각형이 클릭을 먹지 않도록 */
+  pointer-events: none;
+}
+.site-auth > * { pointer-events: auto; }
+
+@media (min-width: 768px) {
+  .site-auth { top: 20px; right: 20px; gap: 10px; }
+}
+
+/* 로그인 버튼. 토마토 레드는 CTA·선택 상태·재방문율 숫자에만 쓴다(DESIGN 10장).
+   여기는 상시 노출되는 보조 동작이라 1px 테두리로 구분한다. */
+.site-auth__button,
+.site-auth__signout {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink-700);
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-full);
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.site-auth__button:hover,
+.site-auth__signout:hover {
+  color: var(--color-ink-900);
+  border-color: var(--color-ink-300);
+}
+
+.site-auth__user {
+  font-size: 14px;
+  font-weight: 600;
+  /* ink-500(#7C726C)은 흰 배경에서 4.43이라 AA 미달이다(CLAUDE.md ⑥).
+     이 텍스트는 --color-bg 위에 올라가므로 ink-700을 쓴다. */
+  color: var(--color-ink-700);
+  background: var(--color-bg);
+  border-radius: var(--radius-full);
+  padding: 7px 4px 7px 12px;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-auth__error {
+  font-size: 13px;
+  color: var(--color-ink-700);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-full);
+  padding: 6px 12px;
+}
+
+/* ── .auth-dialog ────────────────────────────────────────────
+   .review-panel과 같은 <dialog> 패턴이다. 아래 한 줄을 지우지 말 것 —
+   .auth-dialog에 display를 선언하면 브라우저 기본 [open] 처리를 이겨
+   닫아도 화면에 남는다 (CLAUDE.md ⑨와 같은 함정). */
+.auth-dialog:not([open]) { display: none; }
+
+.auth-dialog {
+  width: min(400px, calc(100vw - 32px));
+  max-width: 400px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  /* 그림자는 결과 카드에만 쓰지만(DESIGN 10장), 모달은 배경 위에 떠 있음을
+     알려야 한다. .review-panel과 같은 예외로 둔다. */
+  box-shadow: var(--shadow-result);
+  color: var(--color-ink-900);
+}
+
+.auth-dialog::backdrop {
+  background: rgba(26, 22, 20, 0.4);
+}
+
+.auth-dialog__inner { padding: 24px; }
+
+.auth-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.auth-dialog__title { margin: 0; }
+
+.auth-dialog__close {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink-700);
+  background: none;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-full);
+  padding: 6px 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.auth-dialog__close:hover { color: var(--color-ink-900); border-color: var(--color-ink-300); }
+
+.auth-dialog__form { display: block; }
+
+.auth-dialog__field { margin-bottom: 14px; }
+
+.auth-dialog__label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-700);
+  margin-bottom: 6px;
+}
+
+.auth-dialog__input {
+  font: inherit;
+  font-size: 16px;   /* 16px 미만이면 iOS 사파리가 포커스 시 화면을 확대한다 */
+  width: 100%;
+  color: var(--color-ink-900);
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 11px 12px;
+}
+
+.auth-dialog__input:focus {
+  outline: none;
+  border-color: var(--color-ink-300);
+}
+
+.auth-dialog__input:disabled {
+  background: var(--color-surface-alt);
+  color: var(--color-ink-500);
+}
+
+/* 문구가 없을 때 자리를 잡아두지 않는다 — 창 높이가 흔들리면 버튼이 움직인다.
+   대신 :empty가 아닐 때만 위 여백을 준다. */
+.auth-dialog__status {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  color: var(--color-ink-700);
+}
+.auth-dialog__status:not(:empty) { margin: 4px 0 14px; }
+
+.auth-dialog__status--error   { color: var(--color-error); }
+.auth-dialog__status--info    { color: var(--color-ink-700); }
+.auth-dialog__status--loading { color: var(--color-ink-700); }
+
+.auth-dialog__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* 로그인이 이 창의 주 동작이라 여기만 토마토 레드를 쓴다 (DESIGN 10장의 CTA). */
+.auth-dialog__submit {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  flex: 1 1 0;
+  color: #fff;
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  cursor: pointer;
+}
+.auth-dialog__submit:hover  { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
+.auth-dialog__submit:active { background: var(--color-primary-press); border-color: var(--color-primary-press); }
+
+.auth-dialog__signup {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1 1 0;
+  color: var(--color-ink-900);
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  cursor: pointer;
+}
+.auth-dialog__signup:hover { border-color: var(--color-ink-300); }
+
+.auth-dialog__submit:disabled,
+.auth-dialog__signup:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

@@ -963,3 +963,18 @@ html:has(.review-panel[open]) { overflow: hidden; }
     to   { opacity: 1; }
   }
 }
+
+/* 로그인해야 담을 수 있다는 안내 (UI-CONTRACT 「.saved__locked」).
+   save.js가 로그인 상태에 따라 붙였다 뗐다 한다.
+   surface-alt(#FAF8F7) 위라 ink-500은 4.43으로 AA 미달이다 — ink-700을 쓴다
+   (CLAUDE.md ⑥: 대비는 실제 배경 기준으로 잰다). */
+.saved__locked {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-ink-700);
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 0 0 12px;
+}

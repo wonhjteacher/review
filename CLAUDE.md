@@ -105,8 +105,13 @@ Phase 1 — 리뷰 분석
 api/analyze.js     배포 — 구글 Gemini 프록시. server.py의 handle_analyze()와 같은 계약. POST다
 analysis-cache.js  sessionStorage 래퍼(분석 결과). review-cache.js와 같은 결의 장치다
 
+Phase 1 — 로그인 (F7)
+auth.js      Supabase 이메일 로그인. 공개 창구는 window.Auth 하나뿐이다
+             supabase-js UMD를 CDN에서 받는다 (빌드 도구가 없으므로 ESM이 아니라 UMD)
+
 vercel.json  api/analyze.js의 maxDuration 고정. 배포 전용 — 로컬은 읽지 않는다
 .env         API 키 셋. gitignore 대상 — 절대 커밋하지 않는다
+             Supabase publishable 키는 여기가 아니라 auth.js에 있다 (⑯)
 ```
 
 `save.html`·`save.js`·`storage.js`·`save.css`의 클래스 이름은 **`UI-CONTRACT.md`가 사양이다.**
@@ -323,6 +328,63 @@ quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier
 응답 시간이 단서다 — 용량 부족(`503`)은 서버가 시도하다 포기하므로 수 초가 걸리고,
 쿼터 거절(`429`)은 계산 전에 끊으므로 **200~300ms 즉답**이다. 둘 다 우리 코드에서는 `upstream_http` 하나로 묶인다.
 
+### ⑯ Supabase publishable 키가 `auth.js`에 있는 것은 ⑩ 위반이 아니다
+
+⑩은 「API 키를 클라이언트 코드에 넣지 않는다」고 못 박는다. 그 규칙은 **카카오·구글·Gemini 키**의
+이야기다 — 그 키들은 손에 넣으면 곧바로 과금 API를 부를 수 있어서 프록시(`server.py`·`api/*.js`)가 있다.
+
+Supabase publishable 키는 **브라우저에 내려보내라고 만든 키다.** 이것만으로는 남의 데이터를 읽지 못한다.
+프록시로 감싸도 얻는 것이 없다. → **이 값을 서버로 옮기려 하지 말 것.**
+
+**대신 진짜 방어선은 RLS(Row Level Security)다.**
+지금은 auth만 쓰므로 테이블이 없어서 노출될 데이터도 없다.
+**담기를 Supabase 테이블로 옮기는 순간 RLS를 켜지 않으면 그때 실제로 뚫린다.**
+publishable 키만 있으면 누구나 테이블을 읽을 수 있기 때문이다.
+
+`sb_secret_…`·`service_role` 키는 **절대 클라이언트에 넣지 않는다.** 그건 ⑩ 그대로다.
+
+### ⑰ 로그인 여부는 `onChange`로 그린다. `isSignedIn()`을 직접 읽지 않는다
+
+supabase-js는 세션을 `localStorage`에서 **비동기로** 복원한다.
+페이지 로드 직후에 `Auth.isSignedIn()`을 읽으면 **로그인한 사용자가 비로그인으로 보인다.**
+에러가 나지 않고 조용히 틀린 값이 나오는 부류다 — ⑬의 `Number("")`와 같은 계열이다.
+
+```js
+window.Auth.onChange(function (user) { render(user); });   // 이렇게
+if (window.Auth.isSignedIn()) { … }                        // 이렇게 말고
+```
+
+`onChange`는 **등록 즉시 한 번**, 복원이 끝나면 **다시** 호출되므로 두 시점이 모두 덮인다.
+
+같은 이유로 `.site-auth`는 **복원 전에 아무것도 그리지 않는다.**
+`로그인`을 미리 그려두면 로그인한 사용자에게 로그인 버튼이 깜빡인다.
+
+### ⑱ 「가입 즉시 로그인」은 코드가 아니라 프로젝트 설정이 정한다
+
+대시보드의 **Authentication → Sign In / Providers → Email → Confirm email**이 꺼져 있어야
+`signUp()` 응답에 `session`이 함께 온다. 켜져 있으면 `session`이 `null`로 오고 메일 인증을 기다린다.
+
+**둘 다 성공 응답이다.** `error`만 보고 「가입 완료」라고 띄우면
+인증이 켜진 프로젝트에서 **로그인도 안 됐는데 완료라고 말하게 된다.**
+`auth.js`가 `res.data.session`의 유무로 갈라두었다 — 이 분기를 지우지 말 것.
+
+설정은 코드로 확인할 수 있다:
+
+```bash
+curl -s -H "apikey: <publishable>" "<project-url>/auth/v1/settings" | grep -o '"mailer_autoconfirm":[a-z]*'
+# true  → 인증 꺼짐. 가입 즉시 로그인된다
+# false → 인증 켜짐. 메일을 기다린다
+```
+
+### ⑲ `invalid_credentials`를 「가입되지 않은 이메일」로 옮기지 않는다
+
+Supabase는 **비밀번호 오류와 미가입 계정에 같은 코드**를 돌려준다.
+어느 이메일이 가입돼 있는지 알아내지 못하게 하려는 **의도적 설계**다.
+둘을 나눠 안내하면 그 방어가 무너진다 → `이메일 또는 비밀번호가 맞지 않아요` 하나로 합친다.
+
+안내 문구는 `error.code`로 가른다. **`message`로 가르지 않는다** — 영어이고 버전에 따라 바뀐다.
+표는 UI-CONTRACT 「안내 문구 — Supabase 오류를 한국어로 옮기는 표」에 있다.
+
 ## 검증
 
 테스트 프레임워크가 없으므로 브라우저 콘솔에서 확인한다.
@@ -365,19 +427,39 @@ quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier
 
 **주의:** 브라우저 탭이 백그라운드면 Chrome이 `setTimeout`을 심하게 조인다(250ms → 1200ms 이상 관측). 자동화 검증에서 고정 `sleep` 대신 **조건 폴링**을 쓴다.
 
+**로그인 (F7)**
+
+- `python3 server.py`로 띄운다. `file://`로는 supabase-js의 세션 저장이 출처 없이 동작하지 않는다
+- **키 없이도 여기까지는 전부 검증된다** — 창 열림 · 빈 입력 · 이메일 형식 · 짧은 비밀번호.
+  전부 `auth.js`가 서버에 가기 전에 잡는 경로다
+- 오류 문구는 실제로 태워 확인한다. 서버 왕복이 필요한 것은 `invalid_credentials` 하나뿐이고,
+  **없는 계정에 아무 비밀번호나 넣으면 재현된다** (계정을 만들 필요가 없다)
+- 브라우저 도구로 잴 때 **`Auth`가 든 객체 키는 민감정보로 가려진다.**
+  `{로그인상태: A.isSignedIn()}` 처럼 한글 키로 바꿔 읽는다
+- 세션 유지는 새로고침 뒤 `.site-auth`가 `…님 / 로그아웃`을 그리는지로 본다.
+  **복원이 비동기라 즉시 읽으면 비로그인으로 보인다** — `await window.Auth.ready` 뒤에 읽는다 (⑰)
+- 담기 게이트는 저장 개수로 잰다 — 비로그인 상태에서 담기를 눌러
+  `SavedPlaces.list().length`가 그대로이고 창이 떴는지 확인한다
+- 반응형은 375/768/1440에서 `.site-auth`가 `.save-header__back`과 겹치지 않는지,
+  창이 화면 안에 들어오는지 본다 (`position: fixed`라 컨테이너 폭과 무관하다)
+
 ## 범위 밖 (Phase 0~1)
 
-로그인, 서버 DB, 방문 기록, 리뷰 리스트, 대시보드, Gemini API, Supabase, 사전 신청 이메일 수집.
-로드맵은 PRD 7장 참고.
+서버 DB, 방문 기록, 리뷰 리스트, 대시보드, 사전 신청 이메일 수집. 로드맵은 PRD 7장 참고.
 
-**Phase 1에서 범위 안으로 들어온 것** — 맛집 담기(F1)와 구글 리뷰 보기.
-카카오 로컬 API 검색, localStorage 저장, 구글 Places API (New) 리뷰 조회가 붙었다.
-다만 저장은 **브라우저 로컬뿐이다.** 기기를 옮기면 목록이 따라가지 않는다. 계정 기반 영속 저장은 F7(로그인)의 일이다.
+**범위 안으로 들어온 것** — 맛집 담기(F1) · 구글 리뷰 보기 · Gemini 리뷰 분석 · **로그인(F7)**.
+카카오 로컬 API 검색, localStorage 저장, 구글 Places API (New) 리뷰 조회, Gemini 분석,
+Supabase 이메일 로그인이 붙었다.
+
+**저장은 아직 브라우저 로컬뿐이다.** 로그인이 붙었지만 담아둔 목록은 여전히 `localStorage`다 —
+기기를 옮기면 따라가지 않고, 다른 계정으로 로그인해도 같은 목록이 보인다.
+**로그인은 지금 담기의 문지기일 뿐 저장소가 아니다.** 계정별 저장은 다음 단계이고,
+그때 Supabase 테이블과 **RLS**가 함께 들어와야 한다 (⑯ 참고).
 
 체험 데모의 `PLACES`는 여전히 하드코딩이고 담기 목록과 **연결되어 있지 않다.**
-담아둔 곳으로 데모를 돌리는 것은 다음 단계다.
 
-**Gemini API 키를 클라이언트 코드에 넣지 않는다** (PRD 8장). Supabase Edge Function을 경유해야 하므로 F6(AI 요약)은 F7(로그인) 없이 안전하게 구현할 수 없다.
+**Gemini API 키는 여전히 클라이언트에 넣지 않는다** (PRD 8장) — `api/analyze.js` 프록시가 그 이유다.
+Supabase publishable 키는 성격이 달라 클라이언트에 있다. 둘을 같은 규칙으로 묶지 않는다 (⑯).
 
 ## 반응형
 
