@@ -30,6 +30,7 @@ API 키는 환경변수 또는 `.env`에서만 읽는다. 코드·HTML·JS 어�
 """
 
 import json
+import math
 import os
 import ssl
 import sys
@@ -61,7 +62,21 @@ GOOGLE_FIELD_MASK = ",".join(
 )
 
 # 오매칭 방지. 이름이 같은 가게가 전국에 있으므로 카카오 좌표 반경 안으로 가둔다.
-BIAS_RADIUS_M = 150
+#
+# **locationBias가 아니라 locationRestriction이다. 되돌리지 말 것.**
+# 이름 그대로 bias는 '선호'일 뿐 반경 밖 결과를 배제하지 않는다. 실측으로 확인했다 —
+# 부산에만 있는 `해운대암소갈비집`을 서울 성수동 좌표로 조회했더니
+# bias는 부산 가게를 그대로 돌려줬고(오매칭), restriction은 0건을 돌려줬다.
+#
+# **도형은 rectangle이어야 한다.** Text Search의 locationRestriction은 circle을 받지 않는다
+# (`Unknown name "circle"` 400). circle을 받는 것은 locationBias 쪽이다.
+# **둘을 함께 넣을 수도 없다** — 구글이 400으로 거절한다.
+#
+# 대가: 박스가 원보다 넓어 모서리는 약 212m까지 늘어나고, 반대로 카카오와 구글의
+# 좌표가 이 반경 이상 어긋난 가게는 '못 찾음'이 된다.
+# 틀린 가게의 리뷰를 보여주는 것보다 못 찾았다고 말하는 편이 낫다는 판단이다.
+SEARCH_RADIUS_M = 150
+M_PER_DEG_LAT = 111320  # 위도 1도의 대략적인 거리
 
 # 프론트가 쓰는 필드만 추려 내려보낸다. 카카오 원본을 그대로 흘리지 않는다.
 # x(경도)·y(위도)는 /api/reviews가 locationBias로 쓴다 — 좌표가 없으면
@@ -283,7 +298,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         payload = {
             "textQuery": name,
             # 반경 밖은 아예 후보에서 빠진다. 이름만으로 전국을 뒤지지 않게 하는 장치다.
-            "locationBias": {"circle": {"center": center, "radius": BIAS_RADIUS_M}},
+            "locationRestriction": {"rectangle": bounding_box(center)},
             "maxResultCount": 1,
             # FieldMask가 아니라 요청 본문 필드다 — 과금 등급에 영향을 주지 않는다.
             # 한국어 리뷰와 "3개월 전" 같은 한국어 시점 문구를 받기 위한 것이다.
@@ -410,6 +425,29 @@ def to_coords(raw_x, raw_y):
     if not (-90.0 <= lat <= 90.0) or not (-180.0 <= lng <= 180.0):
         return None
     return {"latitude": lat, "longitude": lng}
+
+
+def bounding_box(center):
+    """반경(m)을 구글이 받는 위경도 박스로 바꾼다. rectangle만 받기 때문이다."""
+    d_lat = SEARCH_RADIUS_M / M_PER_DEG_LAT
+    # 위도가 높아질수록 경도 1도의 실제 거리가 줄어든다.
+    # 극지방에서 cos이 0으로 수렴해 d_lng가 발산하는 것을 막으려고 바닥을 깐다.
+    cos = max(math.cos(math.radians(center["latitude"])), 0.01)
+    d_lng = SEARCH_RADIUS_M / (M_PER_DEG_LAT * cos)
+
+    def clamp(value, low, high):
+        return max(low, min(high, value))
+
+    return {
+        "low": {
+            "latitude": clamp(center["latitude"] - d_lat, -90.0, 90.0),
+            "longitude": clamp(center["longitude"] - d_lng, -180.0, 180.0),
+        },
+        "high": {
+            "latitude": clamp(center["latitude"] + d_lat, -90.0, 90.0),
+            "longitude": clamp(center["longitude"] + d_lng, -180.0, 180.0),
+        },
+    }
 
 
 def google_text(value):

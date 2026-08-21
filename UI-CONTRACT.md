@@ -279,6 +279,24 @@
 키는 `X-Goog-Api-Key` 헤더, 필드는 `X-Goog-FieldMask` 헤더.
 **구버전(`?key=`를 URL에 붙이는 GET)으로 돌아가지 않는다.**
 
+**오매칭 방지는 `locationRestriction` + `rectangle`이다. `locationBias`로 되돌리지 않는다.**
+이름 그대로 bias는 '선호'일 뿐 반경 밖 결과를 **배제하지 않는다.** 실측으로 확인했다 —
+부산에만 있는 `해운대암소갈비집`을 서울 성수동 좌표로 조회했을 때:
+
+| 방식 | 결과 |
+|---|---|
+| `locationBias` + circle | **부산 가게를 그대로 반환 — 오매칭** |
+| `locationRestriction` + circle | `400 Unknown name "circle"` — Text Search는 circle을 안 받는다 |
+| `locationRestriction` + rectangle | **0건 — 차단 성공** |
+| 둘을 함께 지정 | `400 ... cannot be set at the same time` — 택일이다 |
+
+반경은 `bounding_box()`/`boundingBox()`가 위경도 박스로 바꾼다.
+박스는 원보다 넓어 **모서리가 약 212m까지** 늘어난다. 그래도 도시 단위 오매칭은 확실히 막힌다.
+
+대가가 있다 — 카카오와 구글의 좌표가 이 반경 이상 어긋난 가게는 `not_found`가 된다.
+**틀린 가게의 리뷰를 보여주느니 못 찾았다고 말하는 편이 낫다**는 판단이다.
+못 찾는 가게가 잦으면 `SEARCH_RADIUS_M` **하나만** 키운다 (두 구현 모두).
+
 **FieldMask는 아래 5개로 고정이다. 늘리지 않는다** — 요청 필드가 늘면 과금 등급이 올라간다.
 ```
 places.displayName,places.rating,places.userRatingCount,places.reviews,places.googleMapsUri

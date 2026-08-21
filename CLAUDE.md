@@ -213,6 +213,16 @@ places.displayName, places.rating, places.userRatingCount, places.reviews, place
 **신버전 방식만 쓴다** — 키는 `X-Goog-Api-Key` 헤더, 필드는 `X-Goog-FieldMask` 헤더, 메서드는 POST.
 URL에 `?key=`를 붙이는 구버전 GET으로 돌아가지 않는다.
 
+**오매칭 방지는 `locationRestriction` + `rectangle`이다. `locationBias`로 되돌리지 않는다.**
+bias는 '선호'일 뿐 반경 밖을 **배제하지 않는다.** 부산 `해운대암소갈비집`을 서울 좌표로 조회하면
+bias는 부산 가게를 그대로 돌려준다 — 실측으로 확인했고, 에러가 아니라 **그럴듯한 오답**이라 놓치기 쉽다.
+
+- Text Search의 `locationRestriction`은 **circle을 받지 않는다** (`400 Unknown name "circle"`).
+  circle을 받는 쪽은 `locationBias`다 — 그래서 반경을 위경도 박스로 바꿔서 넣는다
+- **둘을 함께 지정할 수 없다** — 구글이 400으로 거절한다. 택일이다
+- 박스는 원보다 넓어 모서리가 약 212m까지 늘어난다. 도시 단위 오매칭을 막는 것이 목적이라 감수한다
+- 못 찾는 가게가 잦으면 `SEARCH_RADIUS_M` 하나만 키운다 (**두 구현 모두**)
+
 ### ⑫ 리뷰 캐시는 무료 한도를 지키는 장치다
 
 구글 리뷰는 **월 1,000건까지만 무료다.** `review-cache.js`가 조회 결과를 sessionStorage에 넣어

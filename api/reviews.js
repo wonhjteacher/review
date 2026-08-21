@@ -29,8 +29,28 @@ const FIELD_MASK = [
   "places.googleMapsUri",
 ].join(",");
 
-// 오매칭 방지. 이름이 같은 가게가 전국에 있으므로 카카오 좌표 반경 안으로 가둔다.
-const BIAS_RADIUS_M = 150;
+/**
+ * 오매칭 방지. 이름이 같은 가게가 전국에 있으므로 카카오 좌표 반경 안으로 가둔다.
+ *
+ * **`locationBias`가 아니라 `locationRestriction`이다. 되돌리지 말 것.**
+ * 이름 그대로 bias는 '선호'일 뿐 반경 밖 결과를 배제하지 않는다. 실측으로 확인했다 —
+ * 부산에만 있는 `해운대암소갈비집`을 서울 성수동 좌표로 조회했더니
+ * bias는 부산 가게를 그대로 돌려줬고(오매칭), restriction은 0건을 돌려줬다.
+ *
+ * **도형은 rectangle이어야 한다.** Text Search의 locationRestriction은 circle을 받지 않는다
+ * (`Unknown name "circle"` 400). circle을 받는 것은 locationBias 쪽이다.
+ * 그래서 반경을 위경도 박스로 바꿔서 넣는다.
+ *
+ * **둘을 함께 넣을 수 없다** — 구글이 400으로 거절한다
+ * (`Location_restriction and location_bias cannot be set at the same time`).
+ *
+ * 대가: 박스가 원보다 넓어 모서리는 약 212m까지 늘어나고, 반대로 카카오와 구글의
+ * 좌표가 이 반경 이상 어긋난 가게는 '못 찾음'이 된다.
+ * **틀린 가게의 리뷰를 보여주는 것보다 못 찾았다고 말하는 편이 낫다는 판단이다.**
+ * 못 찾는 가게가 잦으면 이 값만 키운다.
+ */
+const SEARCH_RADIUS_M = 150;
+const M_PER_DEG_LAT = 111320;   // 위도 1도의 대략적인 거리
 
 function errorBody(code, message) {
   return { ok: false, error: { code, message } };
@@ -72,6 +92,22 @@ function toCoords(rawX, rawY) {
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
   return { latitude: lat, longitude: lng };
+}
+
+/** 반경(m)을 구글이 받는 위경도 박스로 바꾼다. rectangle만 받기 때문이다. */
+function boundingBox(center) {
+  const dLat = SEARCH_RADIUS_M / M_PER_DEG_LAT;
+  /* 위도가 높아질수록 경도 1도의 실제 거리가 줄어든다.
+     극지방에서 cos이 0으로 수렴해 dLng가 발산하는 것을 막으려고 바닥을 깐다.
+     한국 위도에서는 걸릴 일이 없지만, 좌표가 어디서 오는지는 이 함수가 알 수 없다. */
+  const cos = Math.max(Math.cos((center.latitude * Math.PI) / 180), 0.01);
+  const dLng = SEARCH_RADIUS_M / (M_PER_DEG_LAT * cos);
+  const clampLat = (v) => Math.max(-90, Math.min(90, v));
+  const clampLng = (v) => Math.max(-180, Math.min(180, v));
+  return {
+    low:  { latitude: clampLat(center.latitude - dLat), longitude: clampLng(center.longitude - dLng) },
+    high: { latitude: clampLat(center.latitude + dLat), longitude: clampLng(center.longitude + dLng) },
+  };
 }
 
 function textOf(value) {
@@ -137,7 +173,7 @@ module.exports = async function handler(req, res) {
   const body = {
     textQuery: name,
     // 반경 밖은 아예 후보에서 빠진다. 이름만으로 전국을 뒤지지 않게 하는 장치다.
-    locationBias: { circle: { center, radius: BIAS_RADIUS_M } },
+    locationRestriction: { rectangle: boundingBox(center) },
     maxResultCount: 1,
     // FieldMask가 아니라 요청 본문 필드다 — 과금 등급에 영향을 주지 않는다.
     // 한국어 리뷰와 "3개월 전" 같은 한국어 시점 문구를 받기 위한 것이다.
