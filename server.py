@@ -14,10 +14,11 @@
     PORT=8080 python3 server.py
 
 기존 `python3 -m http.server 8000`을 대체한다. 정적 파일은 그대로 서빙하고
-두 경로만 가로채 외부 API로 중계한다.
+세 경로만 가로채 외부 API로 중계한다.
 
-    /api/search    카카오 로컬 API  (KAKAO_REST_API_KEY)
-    /api/reviews   구글 Places API (New) 리뷰  (GOOGLE_PLACES_KEY)
+    /api/search    카카오 로컬 API  (KAKAO_REST_API_KEY)           GET
+    /api/reviews   구글 Places API (New) 리뷰  (GOOGLE_PLACES_KEY)  GET
+    /api/analyze   구글 Gemini 리뷰 분석  (GEMINI_API_KEY)          POST
 
 키가 없는 쪽은 그 경로만 503을 돌려주고, 나머지는 정상 동작한다.
 
@@ -32,6 +33,7 @@ API 키는 환경변수 또는 `.env`에서만 읽는다. 코드·HTML·JS 어�
 import json
 import math
 import os
+import re
 import ssl
 import sys
 import urllib.error
@@ -77,6 +79,107 @@ GOOGLE_FIELD_MASK = ",".join(
 # 틀린 가게의 리뷰를 보여주는 것보다 못 찾았다고 말하는 편이 낫다는 판단이다.
 SEARCH_RADIUS_M = 150
 M_PER_DEG_LAT = 111320  # 위도 1도의 대략적인 거리
+
+# --- Gemini 리뷰 분석 -------------------------------------------------
+#
+# `api/analyze.js`와 **같은 계약을 지킨다.** 사양은 UI-CONTRACT.md
+# 「/api/analyze 요청·응답 봉투」다. 아래 상수는 전부 그쪽과 값이 같아야 한다.
+#
+# **모델명을 환경변수로 덮어쓸 수 있게 둔 것은 실수가 아니라 대비다.**
+# `gemini-2.0-flash`는 이미 종료됐다. 종료된 모델을 부르면 404 NOT_FOUND가 나는데
+# 화면에는 `분석 결과를 읽지 못했어요`만 떠서 원인이 드러나지 않는다.
+# 다음 종료 때는 코드가 아니라 GEMINI_MODEL만 바꾼다. 기본값은 두 구현에서 같이 올린다.
+GEMINI_MODEL = (os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash").strip()
+
+# **generateContent를 쓴다. 새 interactions 쪽이 아니다.**
+# 이유는 api/analyze.js 상단 주석에 적어뒀다 — 최신인 것보다 정확한 것을 고른다.
+GEMINI_ENDPOINT = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    + urllib.parse.quote(GEMINI_MODEL, safe="")
+    + ":generateContent"
+)
+
+# 배포 함수의 상한 안쪽이다 — vercel.json이 maxDuration을 30초로 고정한다.
+# 플랫폼이 먼저 끊으면 우리 봉투가 아니라 Vercel의 불투명한 에러 페이지가 내려간다.
+#
+# 8초였다가 20초로 올렸다. 실측에서 gemini-3.5-flash가 실제 payload로
+# 6.7 / 9.2 / 15.9 / 16.0초를 찍었다 — 8초면 성공 응답 대부분을 우리 손으로 버렸다.
+# thinking 토큰을 많이 쓰는 모델일수록 느리다. 모델을 바꾸면 이 값을 다시 잰다.
+# 값을 올릴 때는 vercel.json과 api/analyze.js를 함께 본다.
+GEMINI_TIMEOUT = 20  # 초
+
+# 서버가 잘라내는 상한. api/analyze.js와 같은 값이어야 한다.
+MAX_REVIEWS = 5
+MAX_REVIEW_CHARS = 1200
+MAX_TOTAL_CHARS = 8000
+MAX_BODY_BYTES = 32 * 1024
+
+# 화면이 쓰는 상한.
+MAX_KEYWORDS = 15
+MAX_WORD_CHARS = 20
+MAX_SUMMARY_CHARS = 120
+
+TONES = ("positive", "neutral", "negative")
+
+# **AI가 쓴 문장이 화면에 그대로 올라간다.**
+# 그래서 DESIGN 7장의 카피 규칙을 프롬프트 안에 심어둔다.
+# 넣지 않으면 나머지 화면은 `~해요`체인데 총평 한 줄만 톤이 어긋난다.
+GEMINI_SYSTEM_PROMPT = "\n".join(
+    (
+        "너는 한국 음식점 리뷰를 분석하는 도구다. 주어진 리뷰만 근거로 삼고, 없는 내용을 지어내지 않는다.",
+        "",
+        "① sentiment — 각 리뷰를 positive/neutral/negative 중 하나로 분류하고 개수를 센다.",
+        "   세 수의 합은 반드시 입력된 리뷰 개수와 같아야 한다.",
+        "",
+        "② keywords — 리뷰에 자주 나오는 핵심 단어를 8~15개 뽑는다.",
+        "   음식 이름·맛·분위기·서비스 위주로 고른다.",
+        "   한국어 명사 6자 이내. 가게 이름·지역명·`정말`·`매우` 같은 정도부사는 제외한다.",
+        "   weight는 그 단어가 리뷰 전체에서 얼마나 중요한지 1~10.",
+        "   tone은 그 단어가 쓰인 맥락이 좋으면 positive, 나쁘면 negative, 중립이면 neutral.",
+        "",
+        "③ summary — 이 가게 리뷰를 한 문장으로 요약한다.",
+        "   60자 이내. `~해요`체 존댓말. 느낌표를 쓰지 않는다.",
+        "   `최고의`·`완벽한`·`혁신적인` 같은 과장 표현을 쓰지 않는다.",
+        "",
+        "JSON 외에 어떤 텍스트도 쓰지 않는다.",
+    )
+)
+
+# 형식 강제의 **실제 장치**다. 프롬프트의 「JSON으로만 답하라」는 보조일 뿐이다.
+# responseSchema는 모델의 디코딩 자체를 스키마에 묶어 형식 위반을 구조적으로 불가능하게 만든다.
+#
+# type이 대문자인 것은 이것이 JSON Schema가 아니라 구글의 OpenAPI Schema 서브셋이기 때문이다.
+# minItems/maxItems는 **넣지 않는다** — 지원 여부가 문서마다 갈리고, 모르는 필드를 보내면
+# Gemini가 400으로 거절한다. 개수는 프롬프트로 요청하고 shape_analysis가 잘라낸다.
+GEMINI_RESPONSE_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "sentiment": {
+            "type": "OBJECT",
+            "properties": {
+                "positive": {"type": "INTEGER"},
+                "neutral": {"type": "INTEGER"},
+                "negative": {"type": "INTEGER"},
+            },
+            "required": ["positive", "neutral", "negative"],
+        },
+        "keywords": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "word": {"type": "STRING"},
+                    "weight": {"type": "INTEGER"},
+                    "tone": {"type": "STRING", "enum": list(TONES)},
+                },
+                "required": ["word", "weight", "tone"],
+            },
+        },
+        "summary": {"type": "STRING"},
+    },
+    "required": ["sentiment", "keywords", "summary"],
+    "propertyOrdering": ["sentiment", "keywords", "summary"],
+}
 
 # 프론트가 쓰는 필드만 추려 내려보낸다. 카카오 원본을 그대로 흘리지 않는다.
 # x(경도)·y(위도)는 /api/reviews가 locationBias로 쓴다 — 좌표가 없으면
@@ -148,18 +251,37 @@ class AppHandler(SimpleHTTPRequestHandler):
         if path == "/api/reviews":
             self.handle_reviews()
             return
+        if path == "/api/analyze":
+            # 이 경로만 POST다. GET으로 오면 JS 구현과 **같은 봉투**로 거절한다.
+            self.send_header_allow_json(405, "POST", "method_not_allowed", "지원하지 않는 요청이에요")
+            return
         if self.is_hidden_path(path):
             # .git, .claude 같은 숨김 경로는 내려보내지 않는다.
             self.send_error(404, "Not Found")
             return
         super().do_GET()
 
+    def do_POST(self):
+        """POST를 받는 경로는 `/api/analyze` 하나뿐이다.
+
+        리뷰 본문 5개(최대 ~7KB)를 쿼리스트링에 실으면 URL 길이 한계에 걸리기 때문이다.
+        나머지 경로는 정적 파일이므로 POST를 받을 이유가 없다.
+        """
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/api/analyze":
+            self.handle_analyze()
+            return
+        if path in ("/api/search", "/api/reviews"):
+            self.send_header_allow_json(405, "GET", "method_not_allowed", "지원하지 않는 요청이에요")
+            return
+        self.send_error(501, "Unsupported method ('POST')")
+
     def do_HEAD(self):
         path = urllib.parse.urlparse(self.path).path
-        if path in ("/api/search", "/api/reviews"):
-            # 본문 없이 상태만 확인하는 경우. 프록시는 GET으로만 쓴다.
+        if path in ("/api/search", "/api/reviews", "/api/analyze"):
+            # 본문 없이 상태만 확인하는 경우. 어느 쪽이든 HEAD로는 쓰지 않는다.
             self.send_response(405)
-            self.send_header("Allow", "GET")
+            self.send_header("Allow", "POST" if path == "/api/analyze" else "GET")
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
@@ -167,6 +289,18 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.send_error(404, "Not Found")
             return
         super().do_HEAD()
+
+    def send_header_allow_json(self, status, allow, code, message):
+        """Allow 헤더를 붙여 정규화된 봉투를 내려보낸다. 405 전용이다."""
+        body = json.dumps(error_body(code, message), ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Allow", allow)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     @staticmethod
     def is_hidden_path(path):
@@ -357,6 +491,146 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         return 200, {"ok": True, "place": shape_place(place)}
 
+    # --- Gemini 리뷰 분석 -------------------------------------------
+
+    def handle_analyze(self):
+        """구글 Gemini로 리뷰 여러 개를 눌러 감정·키워드·총평을 뽑는다.
+
+        `api/analyze.js`(Vercel)와 **같은 계약을 지킨다.**
+        사양은 UI-CONTRACT.md 「/api/analyze 요청·응답 봉투」다. 한쪽만 고치지 않는다.
+        """
+        body = self.read_json_body()
+        reviews = trim_reviews(body.get("reviews") if isinstance(body, dict) else None)
+        if not reviews:
+            self.send_json(400, error_body("empty_reviews", "분석할 리뷰가 없어요"))
+            return
+
+        api_key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+        if not api_key:
+            self.send_json(503, error_body("no_api_key", "분석 서버 설정이 아직 안 됐어요"))
+            return
+
+        name = str(body.get("name") or "").strip()[:60]
+        status, payload = self.call_gemini(api_key, name, reviews)
+        self.send_json(status, payload)
+
+    def read_json_body(self):
+        """요청 본문을 JSON으로 읽는다. 못 읽으면 빈 dict — 호출부가 400으로 끊는다.
+
+        Content-Length가 없거나 상한을 넘으면 읽지 않는다.
+        `api/analyze.js`는 Vercel이 req.body를 파싱해주지만 이쪽은 직접 읽는다.
+        **두 구현이 갈릴 수 있는 지점이라 상한(32KB)을 양쪽에 같이 둔다.**
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            return {}
+
+        if length <= 0 or length > MAX_BODY_BYTES:
+            return {}
+
+        try:
+            raw = self.rfile.read(length)
+        except OSError:
+            return {}
+
+        try:
+            parsed = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            return {}
+
+        return parsed if isinstance(parsed, dict) else {}
+
+    def call_gemini(self, api_key, name, reviews):
+        """Gemini 호출. 어떤 실패든 (상태코드, 정규화된 JSON) 한 쌍으로 돌려준다."""
+        numbered = "\n".join("[%d] %s" % (i + 1, text) for i, text in enumerate(reviews))
+        user_text = ("가게 이름: %s\n\n" % name if name else "") + (
+            "리뷰 %d개:\n%s" % (len(reviews), numbered)
+        )
+
+        payload = {
+            "systemInstruction": {"parts": [{"text": GEMINI_SYSTEM_PROMPT}]},
+            "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+            "generationConfig": {
+                # 같은 리뷰는 같은 분석이 나와야 한다. 캐시해두고 다시 보여주는 값이라 흔들리면 곤란하다.
+                "temperature": 0.2,
+                # 이 상한은 thinking 토큰과 나눠 쓴다. 3.x flash는 기본으로 생각을 하고,
+                # 그 토큰이 여기 상한에 함께 잡힌다. 실측(리뷰 5개·키워드 10개 기준):
+                #   3.7-flash  thinking 587  + 출력 160  =  747
+                #   3.6-flash  thinking 1414 + 출력 173  = 1587
+                #   3.5-flash  thinking 1307 + 출력 349  = 1656
+                # 2048이면 최악 81%가 차서 여유가 20%도 없었고, 실제로 한 번 넘쳐 잘렸다.
+                # 넘치면 JSON이 중간에서 끊겨 bad_analysis가 된다 — 에러가 아니라 그럴듯한 실패다.
+                # 출력 토큰은 상한이 아니라 실제 사용량으로 과금되므로 올려도 비용이 늘지 않는다.
+                # api/analyze.js와 같이 올린다.
+                "maxOutputTokens": 4096,
+                "responseMimeType": "application/json",
+                "responseSchema": GEMINI_RESPONSE_SCHEMA,
+            },
+            # thinkingConfig는 넣지 않는다. 3.x 계열의 필드명을 확신할 수 없고,
+            # 모르는 필드를 보내면 Gemini가 400으로 거절한다. 기본값을 쓴다.
+            # 생각을 끄는 대신 위 maxOutputTokens로 여유를 준다.
+        }
+
+        request = urllib.request.Request(
+            GEMINI_ENDPOINT,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json; charset=utf-8",
+                # 헤더로 보낸다. ?key=는 URL이라 접근 로그·리퍼러에 키가 남는다.
+                "x-goog-api-key": api_key,
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=GEMINI_TIMEOUT, context=SSL_CONTEXT) as response:
+                raw = response.read()
+        except urllib.error.HTTPError as exc:
+            # 모델 종료(404)·키 문제(403)·한도(429)가 전부 여기로 떨어진다.
+            # 본문에 원인이 적혀 있으므로 반드시 로그에 남긴다 — 화면 문구만으로는 구분되지 않는다.
+            # 2000자를 읽는 이유: 일일 한도 판별에 쓰는 quotaId가 details[] 안에 있어
+            # 500자만 잘라 보면 놓친다 (UI-CONTRACT 「/api/analyze」의 429 두 갈래).
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", "replace")[:2000]
+            except OSError:
+                pass
+            self.log_message("gemini HTTPError %s %s %s", exc.code, GEMINI_MODEL, detail[:500])
+            return 502, error_body("upstream_http", gemini_http_message(exc.code, detail))
+        except urllib.error.URLError as exc:
+            self.log_message("gemini URLError %s", exc.reason)
+            return 502, error_body("upstream_unreachable", "분석 서버에 연결하지 못했어요")
+        except TimeoutError:
+            self.log_message("gemini timeout")
+            return 504, error_body(
+                "upstream_timeout",
+                "분석이 오래 걸려서 멈췄어요. 잠시 뒤에 다시 해주세요",
+            )
+        except OSError as exc:
+            self.log_message("gemini OSError %s", exc)
+            return 502, error_body("upstream_unreachable", "분석 서버에 연결하지 못했어요")
+
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            self.log_message("gemini 응답을 JSON으로 읽지 못함")
+            return 502, error_body("upstream_bad_json", "분석 결과를 읽지 못했어요")
+
+        # 안전 필터에 걸리면 candidates가 아예 비어 온다.
+        feedback = body.get("promptFeedback") if isinstance(body, dict) else None
+        block_reason = feedback.get("blockReason") if isinstance(feedback, dict) else None
+        if block_reason:
+            self.log_message("gemini blocked: %s", block_reason)
+            return 502, error_body("bad_analysis", "분석 결과를 읽지 못했어요")
+
+        analysis = shape_analysis(parse_loose(extract_text(body)))
+        if analysis is None:
+            self.log_message("gemini 응답이 스키마와 다름. finishReason: %s", finish_reason(body))
+            return 502, error_body("bad_analysis", "분석 결과를 읽지 못했어요")
+
+        return 200, {"ok": True, "analysis": analysis}
+
     # --- 응답 -------------------------------------------------------
 
     def send_json(self, status, payload):
@@ -518,6 +792,235 @@ def kakao_http_message(status):
     if 400 <= status < 500:
         return "검색 조건을 확인해 주세요"
     return "검색 서버가 잠시 불안정해요. 잠시 뒤에 다시 해주세요"
+
+
+def gemini_http_message(status, detail=""):
+    """업스트림 상태코드를 화면 문구로 옮긴다. `api/analyze.js`의 geminiHttpMessage와 같아야 한다."""
+    if status == 400:
+        return "분석 요청을 처리하지 못했어요"
+    if status in (401, 403):
+        return "분석 서버 인증에 문제가 있어요"
+    if status == 404:
+        # 모델이 종료된 경우가 여기다. 화면 문구만으로는 알 수 없으니 로그를 본다 (CLAUDE.md ⑭).
+        return "분석 모델을 찾지 못했어요"
+    if status == 429:
+        # 429는 두 가지가 겹쳐 온다 — 분당 제한은 기다리면 풀리고, 일일 한도는 안 풀린다.
+        # 상태코드로는 구분되지 않으므로 본문의 quotaId를 본다.
+        # 잘못 띄우면 거짓말이 된다: 일일 소진에 「잠시 뒤에 다시」는 사실이 아니다.
+        if is_daily_quota(detail):
+            return "오늘 분석 한도를 다 썼어요. 내일 다시 해주세요"
+        return "분석 요청이 많아요. 잠시 뒤에 다시 해주세요"
+    if 400 <= status < 500:
+        return "리뷰를 분석하지 못했어요"
+    return "분석 서버가 잠시 불안정해요. 잠시 뒤에 다시 해주세요"
+
+
+def is_daily_quota(detail):
+    """429 본문이 '일일' 한도 소진인지 가린다. 판별 못 하면 False — 덜 틀린 쪽으로 떨어진다.
+
+    구글은 quotaId에 `GenerateRequestsPerDayPerProjectPerModel-FreeTier` 처럼 적어 보낸다.
+    `api/analyze.js`의 isDailyQuota와 같은 규칙이어야 한다.
+    """
+    return "perday" in (detail or "").replace(" ", "").lower()
+
+
+def trim_reviews(value):
+    """리뷰 본문을 상한 안으로 자른다. 빈 목록이면 호출부가 400으로 끊는다.
+
+    프롬프트 인젝션을 막는 장치가 아니라(그건 애초에 남의 리뷰다) 토큰과 지연을 묶는 장치다.
+    """
+    if not isinstance(value, list):
+        return []
+
+    out = []
+    total = 0
+
+    for item in value:
+        if len(out) >= MAX_REVIEWS:
+            break
+
+        text = ("" if item is None else str(item)).strip()
+        if not text:
+            continue
+
+        clipped = text[:MAX_REVIEW_CHARS]
+        if total + len(clipped) > MAX_TOTAL_CHARS:
+            break
+
+        total += len(clipped)
+        out.append(clipped)
+
+    return out
+
+
+def extract_text(payload):
+    """응답에서 모델이 쓴 텍스트만 뽑는다.
+
+    **`part["thought"]`가 True인 조각은 건너뛴다.** 요즘 모델은 생각 과정을 별도 part로
+    실어 보내며, 그걸 같이 이어붙이면 JSON 앞에 산문이 붙어 파싱이 깨진다.
+    """
+    if not isinstance(payload, dict):
+        return ""
+
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return ""
+
+    content = candidates[0].get("content") if isinstance(candidates[0], dict) else None
+    parts = content.get("parts") if isinstance(content, dict) else None
+    if not isinstance(parts, list):
+        return ""
+
+    return "".join(
+        part["text"]
+        for part in parts
+        if isinstance(part, dict) and part.get("thought") is not True and isinstance(part.get("text"), str)
+    )
+
+
+def parse_loose(text):
+    """텍스트에서 JSON 객체를 건져낸다.
+
+    responseSchema가 걸려 있으면 보통 그냥 파싱된다. 이 함수는 그게 지켜지지 않은 경우를
+    위한 그물이다 — ```json 펜스가 붙거나 앞뒤로 한 줄 설명이 붙는 경우.
+    「형식이 어긋난 답이 와도 사이트가 죽지 않게」가 이 함수의 일이다.
+    """
+    trimmed = ("" if text is None else str(text)).strip()
+    if not trimmed:
+        return None
+
+    try:
+        return json.loads(trimmed)
+    except ValueError:
+        pass
+
+    start = trimmed.find("{")
+    end = trimmed.rfind("}")
+    if start == -1 or end <= start:
+        return None
+
+    try:
+        return json.loads(trimmed[start : end + 1])
+    except ValueError:
+        return None
+
+
+def finish_reason(payload):
+    """로그용. 잘린 응답(MAX_TOKENS)인지 구분하려고 본다."""
+    candidates = payload.get("candidates") if isinstance(payload, dict) else None
+    if isinstance(candidates, list) and candidates and isinstance(candidates[0], dict):
+        return candidates[0].get("finishReason") or ""
+    return ""
+
+
+# 십진수 문자열만 통과시킨다. **정규식이 여기 있는 이유가 있다.**
+#
+# 파이썬 float()와 JS Number()가 받아들이는 문자열의 범위가 다르다 —
+# float("1_0")은 10인데 Number("1_0")은 NaN이고, Number("0x10")은 16인데
+# float("0x10")은 ValueError다. 둘 다 받는 모양을 이 정규식으로 못박아 갈라질 여지를 없앤다.
+DECIMAL_RE = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+
+
+def to_number(value):
+    """숫자로 읽을 수 있으면 float, 아니면 None. **JS toNumber()와 짝이다.**
+
+    모델이 `9` 대신 `"9"`를 내는 것은 흔한 형식 흔들림이라 받아준다.
+    반대로 다음은 전부 거절한다 — None·불리언·빈 문자열·dict·list.
+
+    불리언을 먼저 거르는 이유: 파이썬에서 `isinstance(True, int)`는 **True**라
+    걸러내지 않으면 `weight: true`가 1로 통과한다. JS는 typeof로 걸러 5가 되므로 갈린다.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if math.isfinite(value) else None
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not DECIMAL_RE.fullmatch(text):
+        return None
+
+    number = float(text)
+    return number if math.isfinite(number) else None
+
+
+def count_of(value):
+    """0 이상 정수로 강제. 숫자로 읽히지 않으면 0이다."""
+    number = to_number(value)
+    if number is None or number < 0:
+        return 0
+    return int(math.floor(number))
+
+
+def weight_of(value):
+    """1~10으로 clamp.
+
+    **숫자인지 먼저 판정하고 나서 clamp한다 — 순서를 바꾸지 않는다.**
+    「숫자로 읽히지 않으면 기본값 5」를 먼저 확정해야 두 구현이 같은 값을 낸다.
+
+    **반올림은 round()가 아니라 floor(n + 0.5)다.** 파이썬 round()는 은행가 반올림이라
+    round(2.5)가 2인데 JS의 Math.round(2.5)는 3이다 — weight 2.5 하나로 두 구현이 갈린다.
+    floor(n + 0.5)는 음수까지 포함해 Math.round와 정확히 같은 값을 낸다.
+    """
+    number = to_number(value)
+    if number is None:
+        return 5
+    return max(1, min(10, int(math.floor(number + 0.5))))
+
+
+def shape_analysis(raw):
+    """**최후 방어선.** 예외를 던지지 않고 언제나 화면이 쓸 수 있는 값을 낸다.
+
+    실패로 볼 유일한 경우는 감정 세 수가 모두 0일 때다 — 분석이 아예 없었다는 뜻이다.
+    """
+    if not isinstance(raw, dict):
+        return None
+
+    source = raw.get("sentiment")
+    if not isinstance(source, dict):
+        source = {}
+
+    sentiment = {
+        "positive": count_of(source.get("positive")),
+        "neutral": count_of(source.get("neutral")),
+        "negative": count_of(source.get("negative")),
+    }
+    if sentiment["positive"] + sentiment["neutral"] + sentiment["negative"] == 0:
+        return None
+
+    keywords = []
+    seen = set()
+
+    raw_keywords = raw.get("keywords")
+    if isinstance(raw_keywords, list):
+        for item in raw_keywords:
+            if len(keywords) >= MAX_KEYWORDS:
+                break
+            if not isinstance(item, dict):
+                continue
+
+            word = item.get("word")
+            word = ("" if word is None else str(word)).strip()[:MAX_WORD_CHARS]
+            if not word or word in seen:
+                continue
+
+            seen.add(word)
+            tone = item.get("tone")
+            keywords.append(
+                {
+                    "word": word,
+                    "weight": weight_of(item.get("weight")),
+                    "tone": tone if tone in TONES else "neutral",
+                }
+            )
+
+    summary = raw.get("summary")
+    summary = ("" if summary is None else str(summary)).strip()[:MAX_SUMMARY_CHARS]
+
+    # 키워드 0개·총평 빈 문자열이어도 성공으로 내보낸다.
+    # 화면이 그 둘을 각각 숨기고 감정 막대만 그린다 — 통째로 실패하는 것보다 낫다.
+    return {"sentiment": sentiment, "keywords": keywords, "summary": summary}
 
 
 def main():

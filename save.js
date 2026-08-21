@@ -6,8 +6,10 @@
    검색은 /api/search, 구글 리뷰는 /api/reviews 프록시를 거친다.
    두 API 키 모두 서버 환경변수에만 있고 이 파일로 내려오지 않는다 (PRD 8장).
 
-   클래식 스크립트다. 먼저 로드된 두 파일이 전역을 만들어 둔다 —
-   storage.js → window.SavedPlaces · review-cache.js → window.ReviewCache.
+   클래식 스크립트다. 먼저 로드된 세 파일이 전역을 만들어 둔다 —
+   storage.js → window.SavedPlaces · review-cache.js → window.ReviewCache ·
+   analysis-cache.js → window.AnalysisCache.
+   워드클라우드(window.WordCloud)는 CDN이고 **없을 수도 있다** — 없으면 목록으로 대신 그린다.
    ============================================================ */
 
 (function () {
@@ -29,6 +31,34 @@
     failed:   '리뷰를 불러오지 못했어요',
     google:   '구글맵에서 전체 리뷰 보기',
     kakao:    '카카오맵에서 보기'
+  };
+
+  /* AI 리뷰 분석 문구 (UI-CONTRACT 「.analysis」).
+     「AI 리뷰 분석」은 `AI 추천` 금지에 걸리지 않는다 — 그 조항의 취지는
+     「지금 못 지키는 약속을 카피에 넣지 않는다」였고, 이쪽은 **실제로 Gemini가 하는 일**이다. */
+  var ANALYSIS_TEXT = {
+    title:   'AI 리뷰 분석',
+    loading: 'AI가 리뷰를 분석하는 중이에요',
+    failed:  '리뷰를 분석하지 못했어요'
+  };
+
+  /* 감정 3분류. 순서가 곧 막대의 왼쪽→오른쪽 순서다.
+     이모지는 CLAUDE.md ③ 「이모지를 UI 요소로 쓰지 않는다」의 **유일한 예외**다
+     (UI-CONTRACT 공통 사항 참고). aria-hidden으로 두고 의미는 옆 라벨이 진다 —
+     보조기기 사용자에게 「웃는 얼굴」이 아니라 「긍정 3」이 읽힌다. */
+  var SENTIMENTS = [
+    { key: 'positive', label: '긍정', face: '😀' },
+    { key: 'neutral',  label: '보통', face: '😐' },
+    { key: 'negative', label: '부정', face: '😠' }
+  ];
+
+  /* 워드클라우드 색은 **CSS 토큰이 진실의 원천**이다.
+     캔버스는 var()를 읽지 못하므로 실제 렌더링된 값을 꺼내 쓴다.
+     토큰 값을 여기 다시 적어두면 화면은 멀쩡한데 나중에 조용히 갈라진다. */
+  var TONE_TOKENS = {
+    positive: '--color-success',
+    negative: '--color-error',
+    neutral:  '--color-ink-500'
   };
 
   var form = document.getElementById('search-form');
@@ -300,7 +330,7 @@
     return li;
   }
 
-  function renderReviewPlace(place) {
+  function renderReviewPlace(place, kakaoPlace) {
     clearPanelBody();
     ratingRow(place);
 
@@ -311,12 +341,291 @@
         list.appendChild(reviewItem(reviews[i]));
       }
       panelBody.appendChild(list);
+
+      /* 리뷰가 있을 때만 분석을 시작한다.
+         **리뷰가 0개면 이 블록을 숨기는 게 아니라 아예 만들지 않는다** —
+         분석할 원문이 없는데 「분석 중」을 띄우면 영영 끝나지 않는 것처럼 보인다. */
+      startAnalysis(kakaoPlace, reviews);
     } else {
       // 가게는 찾았는데 리뷰만 없는 경우다. '못 찾음'과 구분해서 말한다.
       panelStatus('review-panel__status--empty', '아직 등록된 구글 리뷰가 없어요');
     }
 
+    // 바깥으로 나가는 링크는 언제나 맨 끝이다. 분석 블록보다 뒤에 붙는다.
     panelLink(place.google_maps_uri, REVIEW_TEXT.google);
+  }
+
+  /* --- AI 리뷰 분석 ---------------------------------------------
+     UI-CONTRACT 「.analysis」. 리뷰가 그려진 직후 자동으로 시작한다 —
+     사용자가 누르는 버튼은 없다.
+     ------------------------------------------------------------ */
+
+  /* 캔버스는 var()를 읽지 못하므로 실제 렌더링된 토큰 값을 꺼내 쓴다.
+     읽지 못하는 환경(아주 오래된 브라우저)에서는 본문 색으로 떨어진다. */
+  function toneColor(tone) {
+    var token = TONE_TOKENS[tone] || TONE_TOKENS.neutral;
+    var value = window.getComputedStyle(document.documentElement).getPropertyValue(token);
+    return (value || '').trim() || 'currentColor';
+  }
+
+  function analysisStatus(section, modifier, message) {
+    section.appendChild(el('p', 'analysis__status ' + modifier, message));
+  }
+
+  /* 제목만 남기고 본문을 비운다. 리뷰 패널과 같은 방식이다 —
+     상태를 섞지 않으려고 그릴 때마다 통째로 지우고 다시 채운다. */
+  function clearAnalysisBody(section) {
+    while (section.childNodes.length > 1) {
+      section.removeChild(section.lastChild);
+    }
+  }
+
+  function buildAnalysisSection() {
+    var section = el('section', 'analysis');
+    section.setAttribute('aria-labelledby', 'analysis-title');
+
+    var title = el('h3', 'h2 analysis__title', ANALYSIS_TEXT.title);
+    title.id = 'analysis-title';
+    section.appendChild(title);
+
+    return section;
+  }
+
+  function sentimentBlock(sentiment) {
+    var block = el('div', 'analysis__sentiment');
+    var total = 0;
+    var i;
+
+    for (i = 0; i < SENTIMENTS.length; i += 1) {
+      total += sentiment[SENTIMENTS[i].key] || 0;
+    }
+    if (!total) return null;
+
+    var bar = el('div', 'analysis__bar');
+    bar.setAttribute('role', 'img');
+
+    var legend = el('ul', 'analysis__legend plain-list');
+    var described = [];
+
+    for (i = 0; i < SENTIMENTS.length; i += 1) {
+      var spec = SENTIMENTS[i];
+      var count = sentiment[spec.key] || 0;
+
+      /* 0인 구간은 <span>을 만들지 않는다.
+         .analysis__bar에 border-radius가 걸려 있어 width:0인 조각이 1px 슬라이버로 남는다. */
+      if (count > 0) {
+        var seg = el('span', 'analysis__seg analysis__seg--' + spec.key);
+        seg.style.width = ((count / total) * 100).toFixed(2) + '%';
+        bar.appendChild(seg);
+      }
+
+      described.push(spec.label + ' ' + count + '개');
+
+      /* 항목마다 modifier를 붙이지 않는다 — 셋의 생김새가 같기 때문이다.
+         구분은 이모지·라벨·바로 위 막대의 색 셋이 함께 진다.
+         쓰이지 않을 이름을 계약서에 얼려두면 나중에 죽은 선택자가 된다. */
+      var item = el('li', 'analysis__legend-item');
+      // 이모지는 장식이다. 의미는 바로 옆 라벨이 진다 (색만으로 구분하지 않는다).
+      var face = el('span', 'analysis__face', spec.face);
+      face.setAttribute('aria-hidden', 'true');
+      item.appendChild(face);
+      item.appendChild(el('span', 'analysis__legend-label', spec.label));
+      item.appendChild(el('span', 'analysis__legend-count', String(count)));
+      legend.appendChild(item);
+    }
+
+    // 막대는 <span> 덩어리라 그 자체로는 읽히지 않는다. 전체를 한 문장으로 준다.
+    bar.setAttribute('aria-label', described.join(', '));
+
+    block.appendChild(bar);
+    block.appendChild(legend);
+    return block;
+  }
+
+  /* 라이브러리가 없을 때(CDN 차단·오프라인) 쓰는 대체 구름.
+     weight에 비례해 글자 크기만 준다. 캔버스가 아니라 진짜 텍스트다. */
+  function fallbackCloud(keywords) {
+    var list = el('ul', 'analysis__fallback plain-list');
+
+    for (var i = 0; i < keywords.length; i += 1) {
+      var keyword = keywords[i];
+      var word = el('li', 'analysis__word analysis__word--' + keyword.tone, keyword.word);
+      // 1~10 → 14~32px
+      word.style.fontSize = (14 + (keyword.weight - 1) * 2) + 'px';
+      list.appendChild(word);
+    }
+    return list;
+  }
+
+  function cloudBlock(keywords) {
+    if (!keywords.length) return null;
+
+    var block = el('div', 'analysis__cloud');
+    /* 패널 본문이 aria-live="polite"라 분석이 끝나면 추가된 내용이 낭독된다.
+       감정과 총평은 들을 값이 있지만 단어 15개를 줄줄이 읽는 것은 소음이다. */
+    block.setAttribute('aria-live', 'off');
+
+    if (typeof window.WordCloud === 'function') {
+      var canvas = el('canvas', 'analysis__canvas');
+      // 캔버스 안의 글자는 보조기기에 읽히지 않는다. 아래 숨김 목록이 그 몫을 한다.
+      canvas.setAttribute('aria-hidden', 'true');
+      block.appendChild(canvas);
+
+      var words = el('ul', 'plain-list visually-hidden');
+      for (var i = 0; i < keywords.length; i += 1) {
+        words.appendChild(el('li', null, keywords[i].word));
+      }
+      block.appendChild(words);
+    } else {
+      block.appendChild(fallbackCloud(keywords));
+    }
+    return block;
+  }
+
+  /**
+   * 캔버스에 실제로 그린다. **레이아웃이 잡힌 뒤에 불러야 한다** —
+   * 폭이 0이면 wordcloud2가 아무것도 그리지 않는다.
+   */
+  function drawCloud(canvas, keywords) {
+    var cssWidth = canvas.clientWidth;
+    var cssHeight = canvas.clientHeight;
+    if (!cssWidth || !cssHeight) return false;
+
+    /* 캔버스 픽셀과 CSS 픽셀을 맞춘다. 이걸 하지 않으면 레티나에서 글자가 뭉갠다.
+       wordcloud2는 canvas.width/height(픽셀 공간)에 그리므로 dpr을 곱해둔다. */
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+
+    var colorByWord = Object.create(null);
+    var list = [];
+    for (var i = 0; i < keywords.length; i += 1) {
+      colorByWord[keywords[i].word] = toneColor(keywords[i].tone);
+      list.push([keywords[i].word, keywords[i].weight]);
+    }
+
+    window.WordCloud(canvas, {
+      list: list,
+      // style.css의 font-family와 맞춘다. 캔버스는 CSS 폰트를 물려받지 않는다.
+      fontFamily: "'Inter', 'Pretendard', -apple-system, sans-serif",
+      fontWeight: '600',
+      color: function (word) { return colorByWord[word] || 'currentColor'; },
+      // 폭에 비례시켜 375px과 1080px 양쪽에서 같은 밀도로 보이게 한다
+      weightFactor: function (weight) {
+        return (weight / 10) * (canvas.width / 13);
+      },
+      // 한글은 세로로 눕히면 읽기 어렵다. 회전을 아예 끈다
+      rotateRatio: 0,
+      minRotation: 0,
+      maxRotation: 0,
+      // 캐시된 결과를 다시 그릴 때 같은 그림이 나오게 한다
+      shuffle: false,
+      gridSize: Math.max(4, Math.round(canvas.width / 90)),
+      backgroundColor: 'transparent',
+      drawOutOfBound: false
+    });
+    return true;
+  }
+
+  function renderAnalysis(section, analysis) {
+    clearAnalysisBody(section);
+
+    var sentiment = sentimentBlock(analysis.sentiment);
+    if (sentiment) section.appendChild(sentiment);
+
+    // 키워드가 0개면 구름을 만들지 않는다. 서버가 빈 배열을 성공으로 내보낼 수 있다.
+    var keywords = analysis.keywords || [];
+    var cloud = cloudBlock(keywords);
+    if (cloud) section.appendChild(cloud);
+
+    // 총평도 빈 문자열이면 말풍선을 띄우지 않는다.
+    if (analysis.summary) {
+      section.appendChild(el('p', 'analysis__summary', analysis.summary));
+    }
+
+    /* 그리기는 DOM에 붙은 뒤여야 한다 — 그래야 clientWidth가 잡힌다.
+       실패하면(폭 0 등) 캔버스를 걷어내고 목록으로 대신한다. 빈 네모를 남기지 않는다. */
+    if (cloud) {
+      var canvas = cloud.querySelector('.analysis__canvas');
+      if (canvas && !drawCloud(canvas, keywords)) {
+        cloud.replaceChild(fallbackCloud(keywords), canvas);
+      }
+    }
+  }
+
+  function renderAnalysisLoading(section) {
+    clearAnalysisBody(section);
+    analysisStatus(section, 'analysis__status--loading', ANALYSIS_TEXT.loading);
+  }
+
+  /* 네트워크 응답과 캐시가 **완전히 같은 봉투**로 들어온다.
+     분석은 곁다리 정보라 실패해도 리뷰 본문은 그대로 남는다 —
+     리뷰처럼 카카오맵 링크로 빠져나갈 길을 따로 주지 않는다. */
+  function applyAnalysisEnvelope(section, data) {
+    if (data && data.ok && data.analysis) {
+      renderAnalysis(section, data.analysis);
+      return;
+    }
+    var error = (data && data.error) || {};
+    clearAnalysisBody(section);
+    analysisStatus(section, 'analysis__status--error', error.message || ANALYSIS_TEXT.failed);
+  }
+
+  /* 리뷰 캐시와 갈리는 지점이다 — **성공만 캐시한다.**
+     리뷰의 not_found는 다시 물어도 답이 같은 영구 실패라 캐시할 값이 있었다.
+     분석에는 그런 상태가 없다. 타임아웃·한도 초과·키 없음·형식 오류는 전부
+     시간이 지나면 풀리므로, 캐시하면 고쳐도 탭을 새로 열기 전까지 고쳐지지 않은 것처럼 보인다. */
+  function shouldCacheAnalysis(data) {
+    return Boolean(data && typeof data === 'object' && data.ok);
+  }
+
+  function startAnalysis(place, reviews) {
+    if (!place || !reviews.length) return;
+
+    var section = buildAnalysisSection();
+    panelBody.appendChild(section);
+
+    var cached = window.AnalysisCache.get(place.id);
+    if (cached) {
+      // 캐시 적중 — AI에게 다시 묻지 않는다. 로딩 문구도 띄우지 않는다.
+      applyAnalysisEnvelope(section, cached);
+      return;
+    }
+
+    renderAnalysisLoading(section);
+
+    /* 리뷰와 **같은 순번을 쓴다.** 분석은 리뷰가 그려진 직후에 시작하므로
+       그 시점의 reviewSeq를 잡아두면 된다. 새 변수를 만들면 두 장치가 어긋날 수 있다.
+       패널을 A로 열고 닫고 B로 다시 열었을 때 A의 분석이 B에 붙는 사고를 막는다. */
+    var seq = reviewSeq;
+
+    var texts = [];
+    for (var i = 0; i < reviews.length; i += 1) {
+      if (reviews[i] && reviews[i].text) texts.push(reviews[i].text);
+    }
+    if (!texts.length) {
+      clearAnalysisBody(section);
+      analysisStatus(section, 'analysis__status--error', ANALYSIS_TEXT.failed);
+      return;
+    }
+
+    window.fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ name: place.place_name, reviews: texts })
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        if (seq !== reviewSeq) return;   // 그 사이 다른 가게를 열었다
+        if (shouldCacheAnalysis(data)) window.AnalysisCache.set(place.id, data);
+        applyAnalysisEnvelope(section, data);
+      })
+      .catch(function () {
+        if (seq !== reviewSeq) return;
+        // 연결 실패는 캐시하지 않는다. 연결이 돌아오면 다시 시도할 수 있어야 한다.
+        clearAnalysisBody(section);
+        analysisStatus(section, 'analysis__status--error', '분석 서버에 연결하지 못했어요');
+      });
   }
 
   /* 못 찾음·실패. 어느 쪽이든 빠져나갈 길(카카오맵)을 함께 준다. */
@@ -335,7 +644,8 @@
      그래서 이 분기가 두 경로에서 한 번만 쓰인다. */
   function applyReviewEnvelope(data, place) {
     if (data && data.ok && data.place) {
-      renderReviewPlace(data.place);
+      // 카카오 쪽 place도 함께 넘긴다 — 분석이 place.id(캐시 키)와 place_name을 쓴다.
+      renderReviewPlace(data.place, place);
       return;
     }
     var error = (data && data.error) || {};

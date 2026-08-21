@@ -1,9 +1,11 @@
 # Vercel 배포에 올리지 않는 것
 #
-# api/search.js와 정적 파일(html/css/js)만 올라가면 된다.
+# 올라가는 것은 정적 파일(html/css/js)과 api/*.js 서버리스 함수 셋뿐이다.
+#   api/search.js  api/reviews.js  api/analyze.js
 
-# 로컬 개발 전용 서버 — 배포에는 api/search.js가 대신한다.
+# 로컬 개발 전용 서버 — 배포에는 api/*.js가 대신한다.
 # 제외하지 않으면 Vercel이 정적 파일로 취급해 소스를 그대로 내려준다.
+# (실측: GET /server.py 가 200으로 전문을 돌려준다.)
 server.py
 __pycache__/
 *.pyc
@@ -12,9 +14,13 @@ __pycache__/
 *.md
 
 # 환경변수는 Vercel 대시보드에서 설정한다. 파일로 올리지 않는다.
+#   KAKAO_REST_API_KEY  GOOGLE_PLACES_KEY  GEMINI_API_KEY  (+ 선택: GEMINI_MODEL)
 .env
 .env.*
 
-# 기타
+# 저장소 메타파일 — 배포본에서 서빙될 이유가 없다
+.gitignore
+.vercelignore
 .claude/
+.git/
 .DS_Store

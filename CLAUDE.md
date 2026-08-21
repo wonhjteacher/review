@@ -21,35 +21,55 @@ PORT=8080 python3 server.py      # 포트 변경
 `/api/search` 한 경로만 가로채 카카오 로컬 API로 중계한다. 표준 라이브러리만 쓴다 — `pip install` 금지.
 
 **랜딩페이지(`index.html`)만 볼 때는 여전히 `file://`로 열어도 된다.**
-담기 페이지(`save.html`)는 `fetch('/api/search')`·`fetch('/api/reviews')`를 쓰므로 반드시 서버로 띄워야 한다.
+담기 페이지(`save.html`)는 `fetch('/api/search')`·`fetch('/api/reviews')`·`fetch('/api/analyze')`를 쓰므로 반드시 서버로 띄워야 한다.
 
 `gh` CLI는 Homebrew가 아니라 `~/.local/bin/gh`에 직접 설치되어 있다.
 
 ### 배포 (Vercel)
 
+배포는 **GitHub 연동**이다. `origin`에 push하면 Vercel이 빌드한다 — CLI도 `.vercel/` 링크도 없다.
+
 API 경로의 구현이 **둘씩이다.** 로컬은 `server.py`, 배포는 `api/*.js`.
 
 ```
-server.py        로컬 개발 — 정적 서빙 + 프록시 둘 다. 파이썬 표준 라이브러리만
-api/search.js    배포 — 카카오 검색.  Vercel 서버리스 함수. 의존성 없음(전역 fetch), CommonJS
-api/reviews.js   배포 — 구글 리뷰.    같음
+server.py        로컬 개발 — 정적 서빙 + 프록시 셋 다. 파이썬 표준 라이브러리만
+api/search.js    배포 — 카카오 검색.       Vercel 서버리스 함수. 의존성 없음(전역 fetch), CommonJS
+api/reviews.js   배포 — 구글 리뷰.         같음
+api/analyze.js   배포 — 구글 Gemini 분석.  같음. 셋 중 여기만 POST다
 ```
 
 **짝지어진 둘은 같은 계약을 지켜야 한다** — 사양은 `UI-CONTRACT.md`의
-「/api/search 응답 봉투」와 「/api/reviews 응답 봉투」다.
+「/api/search 응답 봉투」·「/api/reviews 응답 봉투」·「/api/analyze 요청·응답 봉투」다.
 한쪽만 고치면 로컬에서는 되는데 배포에서 깨진다. 고쳤으면 아래로 대조한다:
 
 ```bash
-# server.py를 띄워두고, 같은 쿼리를 두 구현에 태워 JSON을 비교한다
-python3 server.py &
-node -e '…' # 두 응답의 JSON.stringify를 직접 비교 — 바이트 단위로 같아야 한다
+# server.py를 빈 포트로 띄우고, 같은 입력을 두 구현에 태워 JSON을 비교한다.
+# api/*.js는 req/res를 흉내내는 하네스로 직접 require해서 돌린다.
+# 상태코드·Allow 헤더·본문을 JSON.stringify로 대조한다 — 키 순서까지 같아야 한다.
 ```
 
-`.vercelignore`가 `server.py`를 배포에서 뺀다. 빼지 않으면 Vercel이 정적 파일로 취급해 **소스를 그대로 내려준다.**
+**포트가 이미 점유돼 있으면 `server.py`는 뜨지 못하고 요청은 그 자리의 다른 서버로 간다.**
+그쪽은 `/api/*`를 라우팅하지 않아 `501`·`404`가 돌아오는데, 계약 불일치처럼 보인다.
+검증 전에 `lsof -nP -iTCP:<포트> -sTCP:LISTEN`으로 빈 포트인지 먼저 확인한다.
 
-**Vercel 환경변수에 `KAKAO_REST_API_KEY`와 `GOOGLE_PLACES_KEY`를 등록해야 한다.**
-`.env`는 배포에 올라가지 않는다. 로컬에서 리뷰를 보려면 `.env`에도 `GOOGLE_PLACES_KEY`가 있어야 한다.
-한쪽 키가 없으면 그 경로만 `503`을 돌려주고 나머지는 정상 동작한다.
+`.vercelignore`가 `server.py`를 배포에서 뺀다. 빼지 않으면 Vercel이 정적 파일로 취급해 **소스를 그대로 내려준다**
+(실측: `GET /server.py` → `200`, 전문). 사양 문서(`*.md`)와 저장소 메타파일도 같은 이유로 뺀다.
+
+**Vercel 환경변수에 세 개를 등록해야 한다** — `KAKAO_REST_API_KEY` · `GOOGLE_PLACES_KEY` · `GEMINI_API_KEY`.
+`.env`는 배포에 올라가지 않는다. 로컬에서 리뷰·분석을 보려면 `.env`에도 같은 키가 있어야 한다.
+**한쪽 키가 없으면 그 경로만 `503`을 돌려주고 나머지는 정상 동작한다** — 셋이 서로를 막지 않는다.
+
+`GEMINI_MODEL`은 선택이다. 기본값은 `gemini-3.5-flash` — **최신 모델이 아닌 것이 의도다**(⑭).
+모델이 종료되면 코드 배포 없이 대시보드에서 이 값만 바꾼다.
+
+**`package.json`을 만들지 않는다.** 없어야 Vercel이 `api/*.js`를 CommonJS로 해석한다.
+만들면서 `"type": "module"`이 붙는 순간 세 함수의 `module.exports`가 전부 깨진다.
+
+`vercel.json`은 `api/analyze.js`의 `maxDuration`을 **30초로 고정**한다.
+코드의 `GEMINI_TIMEOUT`(20초)은 그 안에서 우리 `504 upstream_timeout` 봉투를 내보내기 위한 값이다.
+두 값은 ⑭의 지연 실측 표에 맞춰져 있다 — 모델을 바꾸면 **셋을 함께** 다시 본다.
+플랫폼이 먼저 끊으면 우리 봉투가 아니라 **Vercel의 불투명한 에러 페이지**가 내려간다.
+고정해두지 않으면 이 전제가 플랫폼 기본값 변경에 조용히 딸려간다.
 
 ## 문서가 사양이다
 
@@ -71,16 +91,22 @@ style.css    DESIGN.md의 토큰·스케일·컴포넌트 수치를 그대로 �
 app.js       PLACES 데이터 + pickPlace() + 데모 상태 관리
 
 Phase 1 — 맛집 담기
-server.py    정적 서버 + /api/search 카카오 프록시. 표준 라이브러리만
+server.py    정적 서버 + /api/search·/api/reviews·/api/analyze 프록시. 표준 라이브러리만
 save.html    담기 페이지 마크업. 클래스 이름은 UI-CONTRACT.md에 고정되어 있다
 save.css     담기 페이지 전용 스타일. style.css 다음에 로드된다
-save.js      검색·렌더·담기 상태 관리 + 구글 리뷰 패널
+save.js      검색·렌더·담기 상태 관리 + 구글 리뷰 패널 + AI 분석 패널
 storage.js   localStorage 래퍼(담아둔 곳). 막힌 환경에서는 메모리로 폴백한다
 
 Phase 1 — 구글 리뷰
 api/reviews.js   배포 — 구글 Places API (New) 프록시. server.py의 handle_reviews()와 같은 계약
 review-cache.js  sessionStorage 래퍼(조회한 리뷰). 무료 한도를 지키는 장치다
-.env         API 키. gitignore 대상 — 절대 커밋하지 않는다
+
+Phase 1 — 리뷰 분석
+api/analyze.js     배포 — 구글 Gemini 프록시. server.py의 handle_analyze()와 같은 계약. POST다
+analysis-cache.js  sessionStorage 래퍼(분석 결과). review-cache.js와 같은 결의 장치다
+
+vercel.json  api/analyze.js의 maxDuration 고정. 배포 전용 — 로컬은 읽지 않는다
+.env         API 키 셋. gitignore 대상 — 절대 커밋하지 않는다
 ```
 
 `save.html`·`save.js`·`storage.js`·`save.css`의 클래스 이름은 **`UI-CONTRACT.md`가 사양이다.**
@@ -246,6 +272,56 @@ bias는 부산 가게를 그대로 돌려준다 — 실측으로 확인했고, �
 JS 쪽에서 빈 문자열을 먼저 걸러내는 줄을 지우지 말 것. **`Number("")`는 `NaN`이 아니라 `0`이다** —
 좌표 없는 요청이 위도 0·경도 0(기니만 앞바다)으로 통과한다.
 파이썬은 `float("")`가 `ValueError`를 내므로 이 함정이 없다. **두 구현을 나란히 태워보지 않으면 드러나지 않는다.**
+
+### ⑭ Gemini 모델은 `GEMINI_MODEL`로 바꾸되, 바꾸기 전에 세 가지를 잰다
+
+기본값은 `gemini-3.5-flash`다. **최신 모델이 아닌 것이 의도다.**
+모델을 올리기 전에 아래 셋을 실측한다 — 하나만 보고 고르면 배포 후에 드러난다.
+
+**㉠ 무료 등급 일일 한도는 모델마다 따로 걸린다. 신모델일수록 좁다.**
+
+```
+Quota exceeded for metric: generate_content_free_tier_requests
+limit: 20,  model: gemini-3.7-flash
+quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier
+```
+
+`gemini-3.7-flash`는 **하루 20건**이었다(실측). 서비스로 쓸 수 있는 수치가 아니다.
+`analysis-cache.js`는 `sessionStorage`라 **탭 단위로만** 듣는다 — 사용자가 다르면 캐시가 겹치지 않아
+방문자 몇 명이면 그날 몫이 끝난다. ⑫의 리뷰 캐시(월 1,000건)와는 강도가 다르다.
+자기 프로젝트의 모델별 한도는 <https://aistudio.google.com/rate-limit>에서 본다.
+
+**㉡ 지연이 함수 상한을 넘으면 그 모델은 쓸 수 없다.** 실제 payload 기준 실측:
+
+| 모델 | 지연 | thinking + 출력 | 판정 |
+|---|---|---|---|
+| `gemini-3.7-flash` | 3.4 ~ 8.9s | 304~587 + 160~378 | 빠르나 한도 20/일 |
+| `gemini-3.5-flash` | 5.0 ~ 16.0s | ~1400 + 155~349 | **현재 기본값** |
+| `gemini-3.6-flash` | 26 ~ 41s | 652~1414 + 151~176 | 상한 초과, 쓸 수 없음 |
+
+`GEMINI_TIMEOUT`(20초)과 `vercel.json`의 `maxDuration`(30초)이 이 표에 맞춰져 있다.
+8초였을 때 **성공 응답을 우리 손으로 버렸다** — 화면에는 `분석이 오래 걸려서 멈췄어요`가 떴다.
+
+**㉢ `maxOutputTokens`(4096)는 thinking 토큰과 나눠 쓴다.**
+3.x flash는 기본으로 생각하고 그 토큰이 상한에 함께 잡힌다. thinking이 출력의 **4~8배**다.
+2048이던 시절 최악 1656/2048(81%)까지 찼고 실제로 한 번 넘쳤다.
+넘치면 JSON이 중간에서 끊겨 `bad_analysis`가 된다 — 에러가 아니라 **그럴듯한 실패**다.
+**상한을 올려도 thinking은 늘지 않는다**(실측 확인). 출력 토큰은 사용량 과금이라 비용도 늘지 않는다.
+
+**모델 종료(404)도 여기 얽힌다.** 종료된 모델을 부르면 화면에는 `분석 모델을 찾지 못했어요`만 뜬다.
+종료 공지가 오면 **코드 배포가 아니라 대시보드의 `GEMINI_MODEL`만 바꾼다.**
+
+### ⑮ `429`는 두 갈래다 — 하나는 기다리면 풀리고 하나는 안 풀린다
+
+분당 요청 제한과 일일 무료 한도 소진이 **둘 다 `429 RESOURCE_EXHAUSTED`로 온다.**
+상태코드로는 구분되지 않으므로 본문의 `quotaId`에 `PerDay`가 있는지 본다.
+일일 소진에 `잠시 뒤에 다시 해주세요`를 띄우면 **거짓말이 된다** — 날짜가 바뀌어야 풀린다.
+
+**판별하려면 본문을 넉넉히 읽어야 한다.** `quotaId`는 `details[]` 안에 있어 실측에서 **995번째 문자**에 있었다.
+로그용으로 500자만 잘라 보던 코드로는 **놓친다.** 두 구현 모두 판별에 2000자를 읽고 로그에는 500자만 남긴다.
+
+응답 시간이 단서다 — 용량 부족(`503`)은 서버가 시도하다 포기하므로 수 초가 걸리고,
+쿼터 거절(`429`)은 계산 전에 끊으므로 **200~300ms 즉답**이다. 둘 다 우리 코드에서는 `upstream_http` 하나로 묶인다.
 
 ## 검증
 

@@ -42,6 +42,11 @@
 
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="save.css">
+
+  <!-- 워드클라우드 (「.analysis」). defer라 파싱을 막지 않는다.
+       이 줄이 없거나 CDN이 막혀도 save.js가 .analysis__fallback 목록으로 그린다 —
+       폰트 4줄과 달리 **없어도 기능이 죽지 않는다.** -->
+  <script defer src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.3/src/wordcloud2.min.js"></script>
 </head>
 
 <body class="save-page container container--wide">
@@ -182,6 +187,95 @@
 
 ---
 
+## `.analysis` — AI 리뷰 분석 (`.review-panel__body` 안)
+
+구글 리뷰를 Gemini로 눌러 **한눈에 보이는 판단 재료**로 바꾼 블록이다.
+자리는 **리뷰 목록 뒤 · `.review-panel__link` 앞**이다 — 바깥으로 나가는 링크는 언제나 맨 끝이다.
+
+**리뷰가 0개면 이 블록을 아예 만들지 않는다.** 숨기는 것이 아니라 DOM에 넣지 않는다.
+분석할 원문이 없는데 「분석 중」을 띄우면 영영 끝나지 않는 것처럼 보인다.
+
+리뷰가 그려진 직후 **자동으로** 시작한다. 사용자가 누르는 버튼은 없다.
+
+```html
+<section class="analysis" aria-labelledby="analysis-title">
+  <h3 class="h2 analysis__title" id="analysis-title">AI 리뷰 분석</h3>
+  <!-- 아래 ①②③ 중 하나만 들어간다 -->
+</section>
+```
+
+**① 분석 중**
+```html
+<p class="analysis__status analysis__status--loading">AI가 리뷰를 분석하는 중이에요</p>
+```
+
+**② 결과** — 감정 막대 · 워드클라우드 · 한 줄 총평
+```html
+<div class="analysis__sentiment">
+  <div class="analysis__bar" role="img" aria-label="긍정 3개, 보통 1개, 부정 1개">
+    <span class="analysis__seg analysis__seg--positive" style="width:60%"></span>
+    <span class="analysis__seg analysis__seg--neutral"  style="width:20%"></span>
+    <span class="analysis__seg analysis__seg--negative" style="width:20%"></span>
+  </div>
+  <ul class="analysis__legend plain-list">
+    <li class="analysis__legend-item">
+      <span class="analysis__face" aria-hidden="true">😀</span>
+      <span class="analysis__legend-label">긍정</span>
+      <span class="analysis__legend-count">3</span>
+    </li>
+    <!-- 보통 😐 · 부정 😠 도 같은 구조. **항목에는 modifier를 붙이지 않는다** —
+         셋의 생김새가 같고, 구분은 이모지·라벨·바로 위 막대 색이 함께 진다 -->
+  </ul>
+</div>
+
+<div class="analysis__cloud" aria-live="off">
+  <canvas class="analysis__canvas" aria-hidden="true"></canvas>
+  <!-- 캔버스 안의 글자는 보조기기에 **읽히지 않는다.** 같은 단어를 숨김 목록으로 함께 둔다.
+       `.visually-hidden`은 화면에서만 감춘다 — display:none은 낭독에서도 빠지므로 쓰지 않는다 -->
+  <ul class="plain-list visually-hidden">
+    <li>국물</li><li>친절</li>
+  </ul>
+</div>
+
+<p class="analysis__summary">진한 국물과 친절한 응대를 꼽는 리뷰가 많아요</p>
+```
+
+**③ 실패**
+```html
+<p class="analysis__status analysis__status--error">{서버가 준 메시지}</p>
+```
+`.review-panel__status--error`와 같은 규칙이다 — **색만으로 구분하지 않는다.**
+분석은 곁다리 정보라 실패해도 **리뷰 본문은 그대로 남는다.** 카카오맵 링크로 대체하지 않는다.
+
+**0%인 구간은 `<span>`을 만들지 않는다.** `.analysis__bar`에 `border-radius`가 걸려 있어
+`width:0`인 조각이 1px 슬라이버로 남는다.
+
+**워드클라우드 라이브러리가 없을 때**(CDN 차단·오프라인) — 캔버스 대신 목록으로 그린다.
+`weight`에 비례해 `font-size`만 인라인으로 준다.
+```html
+<ul class="analysis__fallback plain-list">
+  <li class="analysis__word analysis__word--positive" style="font-size:28px">국물</li>
+</ul>
+```
+
+**색은 의미 색(semantic)만 쓴다. `--color-primary`를 쓰지 않는다.**
+
+| 대상 | 토큰 | 흰 배경 대비 |
+|---|---|---|
+| 긍정 (막대·단어) | `--color-success` | 4.86:1 |
+| 보통 (막대) | `--color-warning` | 4.71:1 |
+| 부정 (막대·단어) | `--color-error` | 6.54:1 |
+| 중립 (단어) | `--color-ink-500` | 4.69:1 |
+
+토마토 레드는 DESIGN 10장이 CTA·선택 상태·재방문율 숫자로 한정한 색이다.
+부정을 브랜드 레드로 칠하면 「빨강 = 우리 브랜드」와 「빨강 = 나쁨」이 한 화면에서 충돌한다.
+
+**캔버스는 `var()`를 읽지 못한다.** 워드클라우드 색은 반드시
+`getComputedStyle(document.documentElement).getPropertyValue('--color-success')`로 꺼내 쓴다.
+토큰 값을 JS에 다시 적어두면 화면은 멀쩡한데 나중에 조용히 갈라진다 (`.container--wide`와 같은 함정).
+
+---
+
 ## `.saved-item` — 담아둔 목록 (`.saved-list` 안, `<li>`)
 
 ```html
@@ -309,6 +403,97 @@ places.displayName,places.rating,places.userRatingCount,places.reviews,places.go
 
 ---
 
+## `/api/analyze` 요청·응답 봉투 — AI 리뷰 분석
+
+앞의 둘과 **같은 봉투 규칙**이다. 프론트는 여기서도 `ok`만 본다.
+구현이 둘인 것도 같다 — 로컬 `server.py`, 배포 `api/analyze.js`. **한쪽만 고치지 않는다.**
+
+**요청** — 세 경로 중 **여기만 `POST`다.**
+
+```
+POST /api/analyze
+Content-Type: application/json
+```
+```jsonc
+{ "name": "{place_name}", "reviews": ["리뷰 본문", "…"] }
+```
+
+`GET`이 아닌 이유: 리뷰 본문 5개는 최대 7KB 남짓이라 쿼리스트링에 실으면 URL 길이 한계에 걸린다.
+`name`은 프롬프트에서 **가게 이름을 키워드에서 빼는 데** 쓴다 (없어도 동작한다).
+
+```jsonc
+// 성공
+{ "ok": true,
+  "analysis": {
+    "sentiment": { "positive": 3, "neutral": 1, "negative": 1 },
+    "keywords": [ { "word": "국물", "weight": 9, "tone": "positive" } ],  // 0~15개
+    "summary": "진한 국물과 친절한 응대를 꼽는 리뷰가 많아요"              // 없으면 ""
+  } }
+// 실패 — 앞의 두 경로와 완전히 같은 모양
+{ "ok": false, "error": { "code": "bad_analysis", "message": "분석 결과를 읽지 못했어요" } }
+```
+
+| code | HTTP | message |
+|---|---|---|
+| `method_not_allowed` | 405 | `지원하지 않는 요청이에요` |
+| `empty_reviews` | 400 | `분석할 리뷰가 없어요` |
+| `no_api_key` | 503 | `분석 서버 설정이 아직 안 됐어요` |
+| `upstream_http` | 502 | 상황별 `~해요` 문구 (429는 아래 두 갈래) |
+| `upstream_unreachable` | 502 | `분석 서버에 연결하지 못했어요` |
+| `upstream_bad_json` · `bad_analysis` | 502 | `분석 결과를 읽지 못했어요` |
+| `upstream_timeout` | 504 | `분석이 오래 걸려서 멈췄어요. 잠시 뒤에 다시 해주세요` |
+
+**429는 두 가지가 겹쳐 온다. 문구를 나눈다 — 하나는 기다리면 풀리고 하나는 안 풀린다.**
+
+| 429의 종류 | 판별 | message |
+|---|---|---|
+| 분당 요청 제한 | 기본값 | `분석 요청이 많아요. 잠시 뒤에 다시 해주세요` |
+| **일일 무료 한도 소진** | 응답 본문의 `quotaId`에 `PerDay` | `오늘 분석 한도를 다 썼어요. 내일 다시 해주세요` |
+
+둘 다 `429 RESOURCE_EXHAUSTED`라 상태코드로는 구분되지 않는다. **본문을 봐야 갈린다.**
+`잠시 뒤에 다시 해주세요`를 일일 소진에 띄우면 **거짓말이 된다** — 날짜가 바뀌어야 풀리기 때문이다.
+판별에 실패하면 분당 제한 쪽 문구로 떨어진다(덜 틀린 쪽).
+
+**판별하려면 본문을 넉넉히 읽어야 한다.** `quotaId`는 응답 앞부분이 아니라 `details[]` 안에 있어
+500자만 잘라 보면 **놓친다.** 두 구현 모두 판별용으로 2000자를 읽고, 로그에는 500자만 남긴다.
+
+**형식 강제는 프롬프트가 아니라 `responseSchema`가 한다.**
+`generationConfig.responseSchema`는 모델의 **디코딩 자체를** 스키마에 묶으므로
+형식 위반이 구조적으로 불가능해진다. 프롬프트의 「JSON으로만 답하라」는 보조 장치일 뿐이다.
+그래도 서버는 `shapeAnalysis()`/`shape_analysis()`로 한 번 더 정규화한다 —
+**`keywords`가 0개거나 `summary`가 빈 문자열이어도 `ok: true`로 내보낸다.**
+감정 막대만이라도 뜨는 편이 통째로 실패하는 것보다 낫다.
+
+**서버가 잘라내는 상한** — 두 구현 모두 같다: 리뷰 **5개** · 각 **1200자** · 합계 **8000자**.
+
+**모델명은 `GEMINI_MODEL` 환경변수로 덮어쓸 수 있다.** 기본값은 `gemini-3.5-flash`.
+
+기본값이 최신 모델이 **아닌** 것은 의도다. 무료 등급 한도가 모델마다 따로 걸리고,
+신모델일수록 좁다 — 실측으로 `gemini-3.7-flash`는 **하루 20건**이었다
+(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, `limit: 20`).
+지연도 함께 봐야 한다. 실제 payload 기준 실측:
+
+| 모델 | 지연 | thinking + 출력 |
+|---|---|---|
+| `gemini-3.7-flash` | 3.4 ~ 8.9s | 304~587 + 160~378 |
+| `gemini-3.5-flash` | 6.7 ~ 16.0s | ~1400 + 155~349 |
+| `gemini-3.6-flash` | **26 ~ 41s** | 652~1414 + 151~176 |
+
+`3.6-flash`는 서버리스 함수 상한을 넘겨 **쓸 수 없다.** 바꿀 때 지연을 먼저 잰다.
+`gemini-2.0-flash`는 이미 종료됐다 — Gemini 모델은 종료되며, 종료된 모델을 부르면
+화면에는 `분석 결과를 읽지 못했어요`만 떠서 원인이 드러나지 않는다.
+종료 공지가 뜨면 **코드가 아니라 환경변수를 바꾼다** (CLAUDE.md ⑭).
+
+**캐시** — 리뷰와 같은 이유·같은 방식이다.
+담당은 `analysis-cache.js`(`window.AnalysisCache`) 하나뿐이고, `save.js`가 직접 `sessionStorage`를 만지지 않는다.
+
+**리뷰와 갈리는 점이 하나 있다 — 여기서는 실패를 캐시하지 않는다.**
+리뷰의 `not_found`는 다시 물어도 답이 같은 **영구 실패**라 캐시할 값이 있었다.
+분석에는 그런 상태가 없다. 타임아웃·한도 초과·키 없음·형식 오류는 전부 시간이 지나면 풀리므로,
+캐시하면 고쳐도 탭을 새로 열기 전까지 고쳐지지 않은 것처럼 보인다.
+
+---
+
 ## `.toast` — 담김 안내
 
 - `hidden` 속성으로 토글한다. `display: none`을 CSS에서 강제하지 않는다 (JS가 `hidden`을 제어).
@@ -321,6 +506,18 @@ places.displayName,places.rating,places.userRatingCount,places.reviews,places.go
 **카피 (CLAUDE.md ③ · DESIGN 7장)**
 `AI 추천` 및 준하는 표현 금지 · 느낌표 금지 · `최고의`·`완벽한`·`혁신적인` 금지 ·
 `~해요` 중심 존댓말 · 이모지를 UI 요소로 쓰지 않음
+
+> **「AI 리뷰 분석」은 `AI 추천` 금지에 걸리지 않는다.** 그 조항의 취지는
+> 「지금 못 지키는 약속을 카피에 넣지 않는다」였고, Phase 0의 추천이 규칙 기반 필터링이라
+> AI라고 부를 수 없었기 때문이다. 이쪽은 **실제로 Gemini가 하는 일**이라 정확한 이름이다.
+> 다만 AI가 쓴 총평 문장이 화면에 그대로 올라가므로, **위 카피 규칙을 시스템 프롬프트 안에**
+> 심어둔다. 프롬프트에 넣지 않으면 총평 한 줄만 톤이 어긋난다.
+
+> **이모지 금지의 유일한 예외는 `.analysis__face`(😀😐😠)다.**
+> 감정 3분류를 색·텍스트와 **함께** 얼굴로도 보여주려고 사용자가 명시적으로 요청한 것이다.
+> `aria-hidden="true"`로 두어 의미는 옆의 텍스트 라벨(`긍정`/`보통`/`부정`)이 진다 —
+> 「상태를 색만으로 구분하지 않는다」는 그대로 지켜진다.
+> **별점의 `★`은 여전히 활자 문자(U+2605)다.** 이 예외를 별점으로 넓히지 않는다.
 
 **접근성 (DESIGN 9장)**
 - 모든 버튼 터치 영역 최소 44×44px

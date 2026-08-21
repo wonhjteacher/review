@@ -708,6 +708,205 @@ html:has(.review-panel[open]) { overflow: hidden; }
 }
 
 /* ============================================================
+   AI 리뷰 분석 (UI-CONTRACT 「.analysis」)
+
+   리뷰 목록 뒤, 바깥으로 나가는 링크 앞에 붙는다.
+   리뷰가 0개면 JS가 이 블록을 아예 만들지 않는다 — 숨기는 것이 아니다.
+
+   그림자를 쓰지 않는다 (DESIGN 10장 — 그림자는 데모 결과 카드 하나에만).
+   리뷰와의 구분은 위쪽 1px 테두리가 준다.
+
+   **색은 의미 색(semantic)만 쓴다. --color-primary를 쓰지 않는다.**
+   토마토 레드는 CTA·선택 상태·재방문율 숫자로 한정된 색이라(DESIGN 10장),
+   부정을 그 색으로 칠하면 「빨강 = 우리 브랜드」와 「빨강 = 나쁨」이 한 화면에서 충돌한다.
+   ============================================================ */
+.analysis {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-line);
+}
+
+.analysis__title {
+  font-size: 15px;
+  color: var(--color-ink-900);
+}
+
+/* --- 감정 막대 --- */
+.analysis__sentiment { margin-top: 14px; }
+
+.analysis__bar {
+  display: flex;
+  height: 10px;
+  border-radius: var(--radius-full);
+  overflow: hidden;                 /* 양끝 조각이 라운드 밖으로 나가지 않게 */
+  background: var(--color-line);    /* 세 구간을 합쳐도 100%가 안 될 때의 바닥 */
+}
+
+/* 폭은 JS가 인라인으로 준다(합이 100%다). flex 기본값이 그걸 줄이지 못하게 고정한다 —
+   shrink가 살아 있으면 반올림으로 합이 100.01%가 되는 순간 세 구간이 모두 미세하게 줄어든다.
+
+   0인 구간은 JS가 아예 만들지 않는다 —
+   width:0인 <span>을 남기면 border-radius 때문에 1px 슬라이버로 보인다 */
+.analysis__seg { flex: 0 0 auto; }
+
+.analysis__seg--positive { background: var(--color-success); }
+.analysis__seg--neutral  { background: var(--color-warning); }
+.analysis__seg--negative { background: var(--color-error); }
+
+.analysis__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+}
+
+.analysis__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* 이모지는 굵기·색을 무시하는 OS 컬러 글리프다.
+   그래서 폰트 굵기 3종 규칙(DESIGN 10장)과 무관하고, 크기만 맞춰준다.
+   의미는 옆의 라벨이 지므로 이것이 안 보이는 환경이어도 정보가 빠지지 않는다. */
+.analysis__face {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.analysis__legend-label { color: var(--color-ink-700); }   /* 흰 배경 9.81:1 */
+
+/* 숫자가 이 줄의 정보다. 라벨보다 한 단계 굵고 진하게 */
+.analysis__legend-count {
+  color: var(--color-ink-900);
+  font-weight: 700;
+}
+
+/* 색만으로 구분하지 않는다 — 세 항목의 글자색은 같고,
+   구분은 이모지·라벨·막대 색 셋이 함께 진다 (DESIGN 9장) */
+
+/* --- 워드클라우드 --- */
+.analysis__cloud {
+  margin-top: 18px;
+}
+
+.analysis__canvas {
+  display: block;                   /* inline이면 아래 여백이 생긴다 */
+  width: 100%;
+  height: 170px;
+}
+
+@media (min-width: 768px) {
+  .analysis__canvas { height: 210px; }
+}
+
+/* 라이브러리가 없을 때(CDN 차단·오프라인) 쓰는 대체 구름.
+   캔버스가 아니라 진짜 텍스트라 선택도 되고 보조기기도 읽는다. */
+.analysis__fallback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 12px;
+}
+
+.analysis__word {
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.analysis__word--positive { color: var(--color-success); }   /* 흰 배경 4.86:1 */
+.analysis__word--negative { color: var(--color-error); }     /* 흰 배경 6.54:1 */
+.analysis__word--neutral  { color: var(--color-ink-500); }   /* 흰 배경 4.69:1 */
+
+/* 캔버스 안의 글자는 보조기기에 읽히지 않는다.
+   같은 단어를 눈에 보이지 않게 두어 낭독 대상만 만든다.
+   display:none이나 visibility:hidden은 **낭독에서도 빠지므로** 쓰지 않는다. */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- 한 줄 총평 (말풍선) --- */
+.analysis__summary {
+  position: relative;
+  margin-top: 20px;
+  padding: 14px 16px;
+  background: var(--color-surface-alt);
+  color: var(--color-ink-700);      /* surface-alt 위 9.27:1 — 불변 조건 ⑥의 검증된 조합 */
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.60;
+  letter-spacing: -0.01em;
+  border-radius: var(--radius-md);
+}
+
+/* 위쪽 꼬리. 워드클라우드에서 이어지는 말이라는 신호다 */
+.analysis__summary::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 20px;
+  width: 12px;
+  height: 12px;
+  background: var(--color-surface-alt);
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+@media (min-width: 768px) {
+  .analysis__summary { font-size: 16px; }
+}
+
+/* --- 상태 (분석 중 · 실패) ---
+   .review-panel__status와 같은 규칙을 따른다 — 색만으로 구분하지 않는다. */
+.analysis__status {
+  margin: 14px 0 0;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.60;
+  letter-spacing: -0.01em;
+  border-radius: var(--radius-md);
+}
+
+.analysis__status--loading {
+  background: var(--color-surface-alt);
+  color: var(--color-ink-700);      /* surface-alt 위 9.27:1 */
+}
+
+/* 리뷰 로딩과 같은 점. 색이 아니라 움직임으로 진행 중임을 알린다 */
+.analysis__status--loading::after {
+  content: "";
+  display: inline-block;
+  width: 4px; height: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+  border-radius: var(--radius-full);
+  background: var(--color-ink-500);
+  animation: status-pulse 1.2s var(--ease) infinite;
+}
+
+/* 실패 — 흰 바탕에 테두리와 왼쪽 굵은 띠. 형태로도 구별된다.
+   분석은 곁다리 정보라 실패해도 리뷰 본문은 그대로 남는다 */
+.analysis__status--error {
+  background: var(--color-bg);
+  color: var(--color-error);        /* 흰 배경 6.54:1 */
+  font-weight: 600;
+  border: 1px solid var(--color-error);
+  border-left-width: 4px;
+}
+
+/* ============================================================
    토스트
    표시 여부는 JS가 hidden 속성으로 제어한다.
    .toast의 display 선언이 [hidden]을 이기므로 아래 규칙이 반드시 필요하다.
@@ -745,7 +944,8 @@ html:has(.review-panel[open]) { overflow: hidden; }
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
   .search__status--loading::after,
-  .review-panel__status--loading::after { animation: none; opacity: 1; }
+  .review-panel__status--loading::after,
+  .analysis__status--loading::after { animation: none; opacity: 1; }
 
   /* 패널도 transform을 빼고 fade만 남긴다 */
   .review-panel { animation: review-panel-fade-in var(--dur-base) var(--ease) both; }

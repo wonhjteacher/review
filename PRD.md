@@ -306,7 +306,7 @@ const PLACES = [
 | 인증 · DB | Supabase (Auth + Postgres) |
 | AI | Gemini API — 리뷰 요약, 감성 분석 |
 | 차트 | 도넛 차트 · 워드클라우드 라이브러리 (선정 필요) |
-| 데이터 | localStorage → JSON 시드 → Supabase 테이블 |
+| 데이터 | localStorage → JSON 시드 → Sㅊupabase 테이블 |
 
 ### ⚠️ 반드시 지킬 기술 제약
 

@@ -15,6 +15,11 @@
 
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="save.css">
+
+  <!-- 워드클라우드 (UI-CONTRACT 「.analysis」). defer라 파싱을 막지 않는다.
+       위 폰트 4줄과 달리 **없어도 기능이 죽지 않는다** —
+       CDN이 막히면 save.js가 .analysis__fallback 목록으로 대신 그린다. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.3/src/wordcloud2.min.js"></script>
 </head>
 <body class="save-page container container--wide">
   <header class="save-header">
@@ -66,6 +71,7 @@
 
   <script src="storage.js"></script>
   <script src="review-cache.js"></script>
+  <script src="analysis-cache.js"></script>
   <script src="save.js"></script>
 </body>
 </html>
