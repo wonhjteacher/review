@@ -109,8 +109,13 @@
    담아둔 곳이 몇 개 안 되는 초반에는 양쪽을 한눈에 보는 편이
    「오늘 어디 가지」를 결정하는 데 낫다.
    비어 있는 그룹은 mypage.js가 hidden으로 섹션째 감춘다. */
-.mypage-group + .mypage-group { margin-top: 40px; }
-@media (min-width: 768px) { .mypage-group + .mypage-group { margin-top: 56px; } }
+/* 앞 그룹에 :not([hidden])을 거는 것이 핵심이다. `+`는 **감춰진 형제도 잡는다** —
+   display:none이라 자리는 안 차지하는데 뒤 그룹에는 여백이 그대로 붙어,
+   「가볼 곳」이 비면 「가본 곳」 위에 이유 없는 56px이 남는다. */
+.mypage-group:not([hidden]) + .mypage-group { margin-top: 40px; }
+@media (min-width: 768px) {
+  .mypage-group:not([hidden]) + .mypage-group { margin-top: 56px; }
+}
 
 .mypage-group__title { margin-bottom: 12px; }
 
