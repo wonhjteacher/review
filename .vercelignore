@@ -13,6 +13,10 @@ __pycache__/
 # 사양 문서 — 저장소에서 읽는 것이고 배포본에 필요 없다
 *.md
 
+# DB 스키마 — Supabase 대시보드에서 실행하는 것이다. 배포본에서 서빙될 이유가 없고,
+# 정적 파일로 취급되면 테이블·정책 구조가 그대로 공개된다 (server.py와 같은 이유).
+*.sql
+
 # 환경변수는 Vercel 대시보드에서 설정한다. 파일로 올리지 않는다.
 #   KAKAO_REST_API_KEY  GOOGLE_PLACES_KEY  GEMINI_API_KEY  (+ 선택: GEMINI_MODEL)
 .env

@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **오늘은 여기** — 담아둔 맛집 중에서 오늘 갈 한 곳을 골라주는 서비스의 랜딩페이지.
 핵심 가치는 검색이 아니라 **결정**이다.
 현재 Phase 0(랜딩페이지 + 체험 데모)과 Phase 1의 맛집 담기(F1)가 구현되어 있다.
+담아둔 곳은 **계정에 저장된다** — Supabase `saved_places` 테이블 + RLS.
 
 ## 명령어
 
@@ -95,7 +96,15 @@ server.py    정적 서버 + /api/search·/api/reviews·/api/analyze 프록시. 
 save.html    담기 페이지 마크업. 클래스 이름은 UI-CONTRACT.md에 고정되어 있다
 save.css     담기 페이지 전용 스타일. style.css 다음에 로드된다
 save.js      검색·렌더·담기 상태 관리 + 구글 리뷰 패널 + AI 분석 패널
-storage.js   localStorage 래퍼(담아둔 곳). 막힌 환경에서는 메모리로 폴백한다
+
+Phase 1 — 담아둔 곳 저장 (계정)
+saved-places.js  Supabase `saved_places` 래퍼. 공개 창구는 window.SavedPlaces 하나뿐이다
+                 storage.js(localStorage)를 **대체한다** — 그 파일은 지웠다 (⑳)
+mypage.html      마이페이지 마크업. 클래스는 UI-CONTRACT.md에 고정되어 있다
+mypage.css       마이페이지 전용 스타일. style.css 다음에 로드된다 (save.css는 안 쓴다)
+mypage.js        가볼 곳/가본 곳 렌더 + 방문 기록 입력창 + 삭제
+supabase-saved-places.sql   테이블·인덱스·RLS 정책 DDL. 대시보드 SQL Editor에서 실행한다
+supabase-visit-policy.sql   방문 기록용 update 정책. 위 파일 다음에 실행한다 (㉒)
 
 Phase 1 — 구글 리뷰
 api/reviews.js   배포 — 구글 Places API (New) 프록시. server.py의 handle_reviews()와 같은 계약
@@ -108,13 +117,15 @@ analysis-cache.js  sessionStorage 래퍼(분석 결과). review-cache.js와 같�
 Phase 1 — 로그인 (F7)
 auth.js      Supabase 이메일 로그인. 공개 창구는 window.Auth 하나뿐이다
              supabase-js UMD를 CDN에서 받는다 (빌드 도구가 없으므로 ESM이 아니라 UMD)
+             DB가 필요한 모듈은 Auth.client()로 클라이언트를 받아간다 — 새 전역을 만들지 않는다
 
 vercel.json  api/analyze.js의 maxDuration 고정. 배포 전용 — 로컬은 읽지 않는다
 .env         API 키 셋. gitignore 대상 — 절대 커밋하지 않는다
              Supabase publishable 키는 여기가 아니라 auth.js에 있다 (⑯)
 ```
 
-`save.html`·`save.js`·`storage.js`·`save.css`의 클래스 이름은 **`UI-CONTRACT.md`가 사양이다.**
+`save.html`·`save.js`·`save.css`와 `mypage.html`·`mypage.js`·`mypage.css`의 클래스 이름은
+**`UI-CONTRACT.md`가 사양이다.**
 마크업과 스타일을 따로 작업할 수 있게 이름을 미리 동결해둔 문서다. 이름을 바꾸려면 계약서를 먼저 고친다.
 
 `app.js`는 클래식 스크립트다(모듈 아님). 최상위 `const` 선언은 `window` 속성이 **되지 않으므로** 다른 프레임에서 `iframe.contentWindow.state`로 접근할 수 없다. 해당 프레임 안에서 평가해야 한다.
@@ -267,7 +278,8 @@ bias는 부산 가게를 그대로 돌려준다 — 실측으로 확인했고, �
   전부 시간이 지나면 풀리는 상태다. 캐시하면 키를 고쳐도 탭을 새로 열기 전까지 고쳐지지 않은 것처럼 보인다
 
 `localStorage`가 아니라 `sessionStorage`인 것도 의도다. 리뷰는 남의 데이터라 낡는다 —
-영속시키면 몇 달 전 리뷰를 새것처럼 보여준다. 담아둔 곳(`storage.js`)은 사용자 본인의 의도라 반대로 영속시킨다.
+영속시키면 몇 달 전 리뷰를 새것처럼 보여준다.
+담아둔 곳은 사용자 본인의 의도라 반대다 — 브라우저가 아니라 **계정에** 영속시킨다 (`saved-places.js` · ⑳).
 
 ### ⑬ 좌표는 `x`가 경도, `y`가 위도다
 
@@ -337,9 +349,20 @@ Supabase publishable 키는 **브라우저에 내려보내라고 만든 키다.*
 프록시로 감싸도 얻는 것이 없다. → **이 값을 서버로 옮기려 하지 말 것.**
 
 **대신 진짜 방어선은 RLS(Row Level Security)다.**
-지금은 auth만 쓰므로 테이블이 없어서 노출될 데이터도 없다.
-**담기를 Supabase 테이블로 옮기는 순간 RLS를 켜지 않으면 그때 실제로 뚫린다.**
-publishable 키만 있으면 누구나 테이블을 읽을 수 있기 때문이다.
+**담기가 `saved_places` 테이블로 옮겨왔으므로 이 방어선은 이제 가정이 아니라 실전이다.**
+RLS를 끄면 publishable 키만 있는 누구나 남의 담아둔 목록을 읽는다 — 키는 `auth.js`에 그대로 적혀 있다.
+
+`saved_places`에 켜져 있는 것을 확인하는 법:
+
+```sql
+select relrowsecurity from pg_class where relname = 'saved_places';   -- t 여야 한다
+select policyname, cmd from pg_policies where tablename = 'saved_places';
+-- select · insert · delete 셋. update 정책은 일부러 없다 (담기는 넣기와 지우기뿐이다)
+```
+
+**테이블을 새로 추가할 때마다 같은 것을 다시 확인한다.** 켜는 것을 잊어도
+화면은 멀쩡하게 동작한다 — 내 것이 잘 보이기 때문이다. 남의 것도 함께 보인다는 사실은
+계정을 두 개 만들어보기 전에는 드러나지 않는다.
 
 `sb_secret_…`·`service_role` 키는 **절대 클라이언트에 넣지 않는다.** 그건 ⑩ 그대로다.
 
@@ -384,6 +407,71 @@ Supabase는 **비밀번호 오류와 미가입 계정에 같은 코드**를 돌�
 
 안내 문구는 `error.code`로 가른다. **`message`로 가르지 않는다** — 영어이고 버전에 따라 바뀐다.
 표는 UI-CONTRACT 「안내 문구 — Supabase 오류를 한국어로 옮기는 표」에 있다.
+
+### ⑳ 담아둔 곳의 저장소는 `saved_places` 하나뿐이다
+
+`storage.js`(localStorage)는 **지웠다.** 되살리지 않는다.
+두 저장소가 함께 있으면 어느 쪽이 진실인지 알 수 없다 — 기기를 옮기면 한쪽만 따라오고,
+로그아웃하면 한쪽만 비는데 화면은 둘을 섞어 보여준다.
+
+`save.js`·`mypage.js`가 `localStorage`나 supabase 클라이언트를 **직접 만지지 않는다.**
+창구는 `saved-places.js`의 `window.SavedPlaces` 하나다 (⑫의 `ReviewCache`와 같은 규칙).
+
+**화면은 동기, 저장은 비동기다.** `renderResults()`가 카드를 그리는 **도중에**
+담김 여부를 물어보므로 거기서 네트워크를 기다릴 수 없다. 그래서:
+
+- 로그인하면 내 목록을 한 번 받아 메모리 색인에 넣는다
+- `has()`·`list()`·`count()`는 그 색인만 본다 → 그대로 동기
+- `add()`·`remove()`는 `Promise<{ok}>`를 돌려준다
+
+**성공했을 때 화면을 고치는 곳은 `onChange` 구독 한 군데다.** 부르는 쪽에서 낙관적으로
+먼저 칠하지 않는다 — 저장에 실패했는데 담긴 것처럼 보이면 **새로고침해야 드러나는 거짓말**이 된다.
+
+왕복하는 동안 버튼을 `disabled`로 잠근다. 잠그지 않으면 연타가 insert와 delete를
+엇갈리게 보내 화면과 DB가 갈린다.
+
+**`isLoaded()`를 보지 않으면 「불러오는 중」이 「비어 있음」으로 보인다.**
+목록이 도착하기 전에도 `list()`는 빈 배열이라, 담아둔 것이 있는 사용자에게
+`아직 담은 맛집이 없어요`가 잠깐 스친다. ⑰과 같은 계열의 함정이다.
+
+### ㉑ 조회에 `user_id` 조건을 걸지 않는다. 거르는 일은 RLS 담당이다
+
+```js
+.from('saved_places').select(...).order('created_at', { ascending: false })   // 이렇게
+.from('saved_places').select(...).eq('user_id', user.id)                      // 이렇게 말고
+```
+
+조건 없이 전체를 요청하면 RLS가 내 것만 돌려준다.
+프론트에서 한 번 더 거르면 **방어선이 프론트에 있는 것처럼 보인다** — 나중에 그 줄을
+지웠을 때 아무 일도 일어나지 않으므로(RLS가 여전히 막아주므로) 걷어내도 되는 줄로 오해하고,
+정작 RLS가 꺼진 테이블에서 같은 습관을 반복하면 그때 뚫린다.
+
+같은 이유로 **`user_id`를 코드에서 만들어 넣지 않는다.** 컬럼 기본값 `auth.uid()`가 채운다.
+직접 실어보내면 남의 id를 넣는 실수를 `with check`가 막아주기는 하지만,
+막아주는 것과 시도하지 않는 것은 다르다.
+
+### ㉒ 방문 기록은 행을 **고친다.** update 정책이 없으면 에러 없이 조용히 실패한다
+
+`visited_at` · `note` · `would_return` 셋은 `saved_places`의 칸이다. **새 테이블을 만들지 않는다** —
+방문 기록은 담아둔 곳의 속성이지 별개의 사건이 아니다.
+
+담기는 넣기와 지우기뿐이라 정책을 셋(`select`·`insert`·`delete`)만 만들어 두었다.
+기록은 **`update`**라 정책이 하나 더 필요하다 (`supabase-visit-policy.sql`).
+
+**없으면 에러가 나지 않는다.** 고칠 대상이 0건으로 보여 PostgREST가 `200 OK` + 빈 배열을 돌려준다 —
+거절이 아니라 「0건 고쳤다」다. `error`만 보면 성공으로 읽혀서 화면에는 `기록을 남겼어요`가 뜨고,
+새로고침하면 기록이 사라져 있다. **에러가 아니라 그럴듯한 실패다** (⑭·⑮와 같은 계열).
+
+→ `saved-places.js`의 `saveVisit()`이 **돌려받은 행이 0건이면 실패로 처리한다**(`reason: 'not_updated'`).
+정책이 있어도 없어도 화면이 거짓말하지 않는다. **이 검사를 지우지 말 것.**
+
+세 가지를 더 지킨다:
+
+- **`wouldReturn`만 필수다.** `note`는 비어도 저장된다 — 기록을 강요하지 않는 것이 이 화면의 약속이다
+- **`visited_at`은 처음 기록할 때만 넣는다.** 「기록 수정」에서 다시 넣으면
+  지난달에 간 곳이 오늘 간 것으로 덮인다 — 데이터가 조용히 틀려진다
+- **`wouldReturn`을 `Boolean()`으로 감싸지 않는다.** `null`(아직 답 안 함)과 `false`(글쎄요)가
+  같아져 **「글쎄요」라고 답한 데이터가 사라진다.** ⑬의 `Number("")`와 같은 계열이다
 
 ## 검증
 
@@ -443,20 +531,69 @@ Supabase는 **비밀번호 오류와 미가입 계정에 같은 코드**를 돌�
 - 반응형은 375/768/1440에서 `.site-auth`가 `.save-header__back`과 겹치지 않는지,
   창이 화면 안에 들어오는지 본다 (`position: fixed`라 컨테이너 폭과 무관하다)
 
+**담아둔 곳 저장 · 마이페이지**
+
+- `python3 server.py`로 띄운다. `file://`로는 세션이 복원되지 않아 목록이 항상 비어 보인다
+- **RLS를 실제로 잰다. 이것이 이 기능의 유일한 방어선이다** (⑯·㉑).
+  한 계정으로 담고 → 로그아웃 → **다른 이메일로 가입** → 마이페이지가 **비어 있어야** 한다.
+  내 계정만 써보면 RLS가 꺼져 있어도 화면이 멀쩡해서 드러나지 않는다
+- 왕복을 실제로 확인한다 — 담기 → 새로고침 → `담았어요`가 남아 있는지.
+  메모리 색인만 맞고 DB에 안 들어간 경우가 여기서만 드러난다
+- 코드에 조회 조건이 없는지 기계적으로 확인한다 (㉑):
+  ```bash
+  grep -n "eq('user_id'\|user_id:" saved-places.js mypage.js save.js   # 0건이어야 한다
+  ```
+- 계약 정합성은 담기 페이지와 같은 방식으로 잰다 — `mypage.html`+`mypage.js`가 쓰는 클래스와
+  `mypage.css`가 스타일하는 선택자를 양방향 대조해 **죽은 CSS 0건 · 미구현 0건**.
+  주석을 먼저 걷어내지 않으면 주석 속 `save.css`·`.results` 같은 말이 선택자로 잡힌다
+- 상태 넷을 각각 태운다 — 비로그인 · 불러오는 중 · 읽기 실패 · 비어 있음.
+  읽기 실패는 `Auth.client()`의 `from`을 잠시 바꿔치기하면 키 없이도 재현된다
+- 연타를 재본다 — 담기 버튼을 빠르게 두 번 눌러 행이 **하나만** 생기는지.
+  `unique (user_id, place_id)`와 버튼 `disabled`가 이중으로 막는다
+
+**방문 기록 (㉒)**
+
+- 정책부터 확인한다. **네 줄(select·insert·update·delete)이어야 한다:**
+  ```sql
+  select policyname, cmd from pg_policies where tablename = 'saved_places' order by cmd;
+  ```
+- **update 정책이 없는 상태를 일부러 태워본다.** 이것이 이 기능의 유일한 조용한 실패다 —
+  `window.fetch`가 아니라 `Auth.client().from`을 바꿔치기해 `update…select`가 **빈 배열**을
+  돌려주게 하면 재현된다. 카드가 「가본 곳」으로 옮겨가지 **않아야** 하고
+  `기록을 남겼어요`가 뜨지 **않아야** 한다
+- 한 줄 기록을 **비우고** 저장 → 정상 저장되고 `note`가 `null`인지 (빈 문자열이 아니라)
+- 「기록 수정」으로 답을 바꿔 저장 → `visited_at`이 **그대로**인지.
+  나간 patch에 `visited_at`이 **없어야** 한다
+- 답 없이 저장 → `또 올지 먼저 골라주세요`로 막히고 창이 열린 채인지
+
+**주의:** 브라우저 도구로 `.visit-dialog`를 열면 `showModal()`의 포커스 트랩이 CDP와 충돌해
+**탭이 죽는다**(실측: 반복 재현). 창 안쪽을 자동화로 재려면 `dlg.showModal = dlg.show`로
+비모달로 바꿔 연다 — 코드 경로는 그대로다.
+
+**주의:** `dialog.close()` 직후 **같은 태스크에서** 다시 열면 안 된다.
+`close` 이벤트가 뒤늦게 도착해 `editing`을 지워, 저장이 조용히 무시된다.
+자동화에서 닫고 다시 열 때는 사이에 한 틱을 둔다.
+
 ## 범위 밖 (Phase 0~1)
 
-서버 DB, 방문 기록, 리뷰 리스트, 대시보드, 사전 신청 이메일 수집. 로드맵은 PRD 7장 참고.
+서버 DB, 리뷰 리스트, 대시보드, 사전 신청 이메일 수집. 로드맵은 PRD 7장 참고.
+(**방문 기록은 범위 안으로 들어왔다** — `saved_places`의 `visited_at`·`note`·`would_return` 셋. ㉒)
 
-**범위 안으로 들어온 것** — 맛집 담기(F1) · 구글 리뷰 보기 · Gemini 리뷰 분석 · **로그인(F7)**.
-카카오 로컬 API 검색, localStorage 저장, 구글 Places API (New) 리뷰 조회, Gemini 분석,
-Supabase 이메일 로그인이 붙었다.
+**범위 안으로 들어온 것** — 맛집 담기(F1) · 구글 리뷰 보기 · Gemini 리뷰 분석 ·
+**로그인(F7)** · **계정별 저장과 마이페이지** · **방문 기록**.
+카카오 로컬 API 검색, 구글 Places API (New) 리뷰 조회, Gemini 분석,
+Supabase 이메일 로그인과 `saved_places` 저장이 붙었다.
 
-**저장은 아직 브라우저 로컬뿐이다.** 로그인이 붙었지만 담아둔 목록은 여전히 `localStorage`다 —
-기기를 옮기면 따라가지 않고, 다른 계정으로 로그인해도 같은 목록이 보인다.
-**로그인은 지금 담기의 문지기일 뿐 저장소가 아니다.** 계정별 저장은 다음 단계이고,
-그때 Supabase 테이블과 **RLS**가 함께 들어와야 한다 (⑯ 참고).
+**저장은 이제 계정에 묶여 있다.** 기기를 옮겨도 같은 계정이면 목록이 따라오고,
+다른 계정으로 로그인하면 그 계정의 목록이 나온다 — RLS가 그렇게 돌려주기 때문이다.
+`localStorage` 저장(`storage.js`)은 **지웠다.** 되살리지 않는다 (⑳).
+
+**Supabase는 이제 auth 전용이 아니다 — auth + `saved_places` 맛집 저장이다.**
+테이블이 생겼으므로 ⑯의 「RLS를 켜지 않으면 뚫린다」는 가정이 아니라 실전 조건이다.
 
 체험 데모의 `PLACES`는 여전히 하드코딩이고 담기 목록과 **연결되어 있지 않다.**
+「담아둔 맛집 중에서 골라준다」는 핵심 가치를 실제 데이터로 잇는 것이 다음 단계다 —
+`saved_places`가 그 재료를 이제 들고 있다.
 
 **Gemini API 키는 여전히 클라이언트에 넣지 않는다** (PRD 8장) — `api/analyze.js` 프록시가 그 이유다.
 Supabase publishable 키는 성격이 달라 클라이언트에 있다. 둘을 같은 규칙으로 묶지 않는다 (⑯).

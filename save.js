@@ -7,8 +7,13 @@
    두 API 키 모두 서버 환경변수에만 있고 이 파일로 내려오지 않는다 (PRD 8장).
 
    클래식 스크립트다. 먼저 로드된 세 파일이 전역을 만들어 둔다 —
-   storage.js → window.SavedPlaces · review-cache.js → window.ReviewCache ·
+   saved-places.js → window.SavedPlaces · review-cache.js → window.ReviewCache ·
    analysis-cache.js → window.AnalysisCache.
+
+   **담아둔 곳은 Supabase `saved_places`에 저장된다.** localStorage를 쓰던
+   storage.js는 지웠다 — 두 저장소가 섞이면 어느 쪽이 진실인지 알 수 없다.
+   저장이 네트워크가 되었으므로 add()·remove()는 Promise를 돌려준다.
+   has()·list()는 여전히 동기다 (saved-places.js가 메모리 색인을 들고 있다).
    워드클라우드(window.WordCloud)는 CDN이고 **없을 수도 있다** — 없으면 목록으로 대신 그린다.
    ============================================================ */
 
@@ -198,7 +203,10 @@
 
     var body = el('div', 'saved-item__body');
     body.appendChild(el('p', 'h2 saved-item__name', place.name));
-    if (place.category) body.appendChild(el('p', 'caption saved-item__category', place.category));
+    /* 계약서의 이름은 .saved-item__category지만 담기는 값은 주소다.
+       saved_places 테이블이 카테고리를 들고 있지 않기 때문이다 —
+       클래스를 새로 지어내지 않고(⑦) 이 줄의 자리를 주소에 내준다. */
+    if (place.address) body.appendChild(el('p', 'caption saved-item__category', place.address));
     li.appendChild(body);
 
     var button = el('button', 'saved-item__remove', '해제');
@@ -228,9 +236,9 @@
   }
 
   /* 로그인해야 담을 수 있다는 안내 (UI-CONTRACT 「.saved__locked」).
-     .saved-list를 지우지 않고 위에 문단만 얹는다 — 이미 담아둔 목록이 있는
-     사용자의 데이터를 화면에서 없애지 않기 위해서다. 저장은 아직 브라우저
-     로컬(storage.js)이고 계정과 묶여 있지 않다. */
+     .saved-list를 지우지 않고 위에 문단만 얹는다.
+     비로그인일 때 목록은 어차피 비어 있다 — 저장이 계정에 묶여 있어
+     (Supabase saved_places + RLS) 로그인해야 내 것이 돌아온다. */
   function renderLocked() {
     var section = savedList.parentNode;
     var existing = section.querySelector('.saved__locked');
@@ -261,19 +269,18 @@
     savedList.appendChild(fragment);
   }
 
-  /* 담김 여부가 바뀌면 검색 결과 쪽 버튼도 같이 맞춘다 */
-  function syncResultButton(id) {
-    var card = results.querySelector('.place-card[data-kakao-id="' + cssEscape(id) + '"]');
-    if (!card) return;
-    var button = card.querySelector('.place-card__save');
-    if (!button) return;
-    var place = placesById[id];
-    applySaveState(button, window.SavedPlaces.has(id), place ? place.place_name : '');
-  }
-
-  function cssEscape(value) {
-    if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(value);
-    return String(value).replace(/["\\]/g, '\\$&');
+  /* 화면에 남아 있는 검색 결과 카드의 담기 버튼을 전부 새 상태로 맞춘다.
+     한 장만 고르지 않고 전부 훑는 이유 — 로그인·로그아웃이면 목록이
+     통째로 바뀐다. 그때 맞추지 않으면 로그아웃한 뒤에도 `담았어요`가 남는다. */
+  function syncAllResultButtons() {
+    var cards = results.querySelectorAll('.place-card');
+    for (var i = 0; i < cards.length; i += 1) {
+      var id = cards[i].dataset.kakaoId;
+      var button = cards[i].querySelector('.place-card__save');
+      if (!button) continue;
+      var place = placesById[id];
+      applySaveState(button, window.SavedPlaces.has(id), place ? place.place_name : '');
+    }
   }
 
   /* --- 리뷰 패널 ------------------------------------------------
@@ -839,33 +846,50 @@
     if (!card) return;
     var id = card.dataset.kakaoId;
 
-    if (window.SavedPlaces.has(id)) {
-      /* 해제는 막지 않는다. 이미 담아둔 것은 본인 데이터이고,
-         저장이 아직 브라우저 로컬이라 계정과 묶여 있지도 않다.
-         로그인 게이트는 **새로 담는 쪽**에만 세운다. */
-      window.SavedPlaces.remove(id);
-      showToast('담기를 해제했어요');
-    } else {
-      /* 담기는 로그인한 사람만 (UI-CONTRACT 「window.Auth」).
-         requireSignIn이 false면 로그인 창까지 이미 띄운 뒤다. */
-      if (window.Auth && !window.Auth.requireSignIn('로그인하면 이 가게를 담아둘 수 있어요')) {
-        return;
-      }
-      var place = placesById[id];
-      if (!place) return;
-      window.SavedPlaces.add({
-        id: place.id,
-        name: place.place_name,
-        category: lastCategory(place.category_name),
-        address: addressOf(place),
-        url: place.place_url,
-        savedAt: Date.now()
-      });
-      showToast('담았어요');
+    /* 저장이 네트워크가 되었으므로 왕복하는 동안 버튼을 잠근다.
+       잠그지 않으면 연타가 insert와 delete를 엇갈리게 보내 화면과 DB가 갈린다. */
+    if (button.disabled) return;
+
+    var saved = window.SavedPlaces.has(id);
+
+    /* 담기는 로그인한 사람만 (UI-CONTRACT 「window.Auth」).
+       requireSignIn이 false면 로그인 창까지 이미 띄운 뒤다.
+       **비로그인이면 해제할 것도 없다** — 목록이 계정에 묶여 있어 비어 있기 때문이다. */
+    if (!saved && window.Auth &&
+        !window.Auth.requireSignIn('로그인하면 맛집을 담을 수 있어요')) {
+      return;
     }
 
-    syncResultButton(id);
-    renderSaved();
+    var place = placesById[id];
+    if (!saved && !place) return;
+
+    button.disabled = true;
+
+    var work = saved
+      ? window.SavedPlaces.remove(id)
+      : window.SavedPlaces.add({
+          id: place.id,
+          place_name: place.place_name,
+          road_address_name: addressOf(place),
+          x: place.x,
+          y: place.y,
+          place_url: place.place_url
+        });
+
+    /* 화면 갱신은 여기서 하지 않는다. 저장소가 onChange로 알려주면
+       renderSaved()와 버튼 동기화가 한 곳에서 일어난다 (아래 시작부).
+       두 군데서 그리면 실패했을 때 한쪽만 되돌려지는 일이 생긴다. */
+    work.then(function (res) {
+      button.disabled = false;
+
+      /* 실패하면 화면을 바꾸지 않는다. 낙관적으로 먼저 칠해두면
+         저장되지 않은 것이 담긴 것처럼 보인다 — 새로고침해야 드러나는 거짓말이다. */
+      if (!res || !res.ok) {
+        showToast(saved ? '해제하지 못했어요' : '담지 못했어요');
+        return;
+      }
+      showToast(saved ? '담기를 해제했어요' : '담았어요');
+    });
   });
 
   /* 카드 전체가 리뷰 패널의 클릭 영역이다 (UI-CONTRACT 「.place-card」).
@@ -912,17 +936,27 @@
 
     var item = button.closest('.saved-item');
     if (!item) return;
+    if (button.disabled) return;
 
-    window.SavedPlaces.remove(item.dataset.kakaoId);
-    showToast('담기를 해제했어요');
-    syncResultButton(item.dataset.kakaoId);
-    renderSaved();
+    button.disabled = true;
+    window.SavedPlaces.remove(item.dataset.kakaoId).then(function (res) {
+      button.disabled = false;
+      showToast(res && res.ok ? '담기를 해제했어요' : '해제하지 못했어요');
+    });
   });
 
   /* --- 시작 ----------------------------------------------------- */
 
-  renderSaved();
   setStatus(null);
+
+  /* 목록이 바뀌면 화면을 다시 그린다. 바뀌는 경로가 셋이다 —
+     담기·해제, 로그인/로그아웃(다른 계정의 목록으로 갈아탐), 첫 로드.
+     세 곳에서 각각 renderSaved()를 부르는 대신 저장소가 알려주게 한다.
+     onChange는 등록 즉시 한 번 불러주므로 초기 렌더도 여기서 덮인다. */
+  window.SavedPlaces.onChange(function () {
+    renderSaved();
+    syncAllResultButtons();
+  });
 
   /* 로그인 상태에 따라 안내 문단이 붙고 떨어진다.
      **isSignedIn()을 직접 읽지 않고 onChange로 그린다** — 세션 복원이 비동기라

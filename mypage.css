@@ -1,0 +1,460 @@
+/* ============================================================
+   오늘은 여기 — 마이페이지 (Phase 1)
+
+   style.css **다음에** 로드된다. 토큰·유틸(.h1/.h2/.body/.caption/
+   .plain-list/.btn-primary/.action/.container)과 로그인 UI(.site-auth·
+   .auth-dialog)는 전부 style.css가 들고 있다 — 여기서 다시 선언하지 않는다.
+
+   save.css를 함께 불러오지 않는 이유 — 이 페이지는 검색·리뷰·분석 컴포넌트를
+   하나도 쓰지 않는다. 통째로 불러오면 죽은 CSS가 화면 하나 분량 생긴다.
+   대신 겹치는 두 조각(헤더·뒤로가기)만 여기에 같은 값으로 옮겨 적었다.
+
+   브레이크포인트 폭(480/768/1080)의 진실의 원천은 style.css의
+   `.container--wide` 하나뿐이다. 여기서 max-width를 다시 선언하지 않는다 (⑧).
+   ============================================================ */
+
+.mypage-page {
+  padding-bottom: 64px;
+}
+
+/* ── 머리말 ────────────────────────────────────────────────────
+   save.css의 .save-header와 같은 수치다. 두 페이지가 나란히 읽히도록. */
+.mypage-header {
+  padding: 20px 0 32px;
+}
+@media (min-width: 768px) { .mypage-header { padding: 24px 0 40px; } }
+
+.mypage-header__back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;                 /* 터치 영역 (DESIGN 9장) */
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+.mypage-header__back:hover { color: var(--color-ink-900); }
+
+.mypage-header__title { margin-top: 8px; }
+.mypage-header__desc  { color: var(--color-ink-700); margin-top: 8px; }
+
+/* ── 상태 한 줄 ────────────────────────────────────────────────
+   비어 있을 때 자리를 차지하지 않게 :empty를 숨긴다.
+   [hidden]이 아니라 :empty인 이유 — 문구를 지우는 것만으로 사라지게 해서
+   토글 상태를 따로 들고 있지 않아도 되게 한다. */
+.mypage__status {
+  margin: 0 0 16px;
+  font-size: 15px;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+}
+.mypage__status:empty { display: none; }
+.mypage__status--error { color: var(--color-error); }
+
+/* ── 안내 (비로그인 · 비어 있음) ───────────────────────────────
+   면을 채우지 않고 1px 테두리로만 구분한다.
+   그림자는 결과 카드에만 쓴다 (DESIGN 10장 · CLAUDE.md ⑤). */
+.mypage__notice:empty { display: none; }
+
+.mypage__notice-box {
+  padding: 32px 20px;
+  text-align: center;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+}
+@media (min-width: 768px) { .mypage__notice-box { padding: 48px 32px; } }
+
+.mypage__notice-text {
+  /* surface-alt(#FAF8F7) 위에서는 대비가 떨어진다 (CLAUDE.md ⑥).
+     실제 배경 기준으로 재서 ink-500 대신 ink-700을 쓴다. */
+  color: var(--color-ink-700);
+}
+
+/* CTA는 태블릿부터 최대 320px. 컨테이너 전체 폭으로 늘리지 않는다 (DESIGN 10장).
+   .action이 그 폭을 들고 있으므로 가운데 정렬만 여기서 얹는다. */
+.mypage__notice-action {
+  margin: 20px auto 0;
+}
+
+/* ── 카드 목록 ─────────────────────────────────────────────────
+   PC에서 2열. 검색 결과(.results)와 달리 판단할 것이 없는 보관함이라
+   3열까지 좁히지 않고 읽기 편한 폭을 남긴다. */
+.mypage-list {
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 1024px) {
+  .mypage-list { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+}
+
+.mypage-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.mypage-card:hover { border-color: var(--color-ink-300); }
+
+/* 지우는 중에는 눌린 카드가 아직 목록에 있다는 것을 알린다.
+   지우고 나서 사라지므로 되돌리는 상태는 없다. */
+.mypage-card.is-busy { opacity: 0.55; }
+
+/* ── 그룹 (가볼 곳 / 가본 곳) ───────────────────────────────────
+   탭이 아니라 **구분 제목**이다. 탭은 한 번에 한쪽만 보여주는데,
+   담아둔 곳이 몇 개 안 되는 초반에는 양쪽을 한눈에 보는 편이
+   「오늘 어디 가지」를 결정하는 데 낫다.
+   비어 있는 그룹은 mypage.js가 hidden으로 섹션째 감춘다. */
+.mypage-group + .mypage-group { margin-top: 40px; }
+@media (min-width: 768px) { .mypage-group + .mypage-group { margin-top: 56px; } }
+
+.mypage-group__title { margin-bottom: 12px; }
+
+/* 개수는 제목보다 조용하게. .saved__count와 같은 처리다. */
+.mypage-group__count {
+  color: var(--color-ink-500);      /* 흰 배경 4.69:1 */
+  font-weight: 600;
+}
+
+.mypage-card__body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+/* .h2(20/22px)를 그대로 두면 2열에서 제목이 화면을 지배한다.
+   여기서만 한 단계 낮춘다. 유틸(.h2) 자체는 건드리지 않는다. */
+.mypage-card__name {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.40;
+}
+@media (min-width: 768px) { .mypage-card__name { font-size: 18px; } }
+
+.mypage-card__address {
+  margin-top: 4px;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  font-size: 14px;
+}
+
+.mypage-card__date {
+  margin-top: 6px;
+  color: var(--color-ink-500);      /* 흰 배경 4.69:1 */
+}
+
+.mypage-card__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;                 /* 터치 영역 (DESIGN 9장) */
+  margin-top: 4px;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--dur-fast) var(--ease);
+}
+.mypage-card__link:hover { color: var(--color-ink-900); }
+
+/* 액션 줄 — 카카오맵 링크와 기록 버튼이 한 줄에 선다.
+   .mypage-card__link의 min-height 44px가 줄 높이를 잡아준다. */
+.mypage-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* 다녀왔어요 — 이 카드에서 **하려는 일**이라 유일하게 빨강을 쓴다.
+   면이 아니라 선으로만 쓰는 것은 .place-card__save와 같은 이유다:
+   카드가 2열로 깔리면 채운 빨강 버튼이 화면에 여러 개 반복된다. */
+.mypage-card__visit {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;                 /* 터치 영역 (DESIGN 9장) */
+  padding: 0 14px;
+  background: var(--color-bg);
+  /* 흰 배경 위 primary는 4.57:1로 겨우 통과한다. 여유를 두어
+     한 단계 어두운 hover 값(5.83:1)을 글자에 쓴다. 테두리는 primary 그대로 */
+  color: var(--color-primary-hover);
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.mypage-card__visit:hover { background: var(--color-primary-tint); }
+
+/* 기록 수정 — 이미 끝난 일이라 강조를 거둔다.
+   .mypage-card__link와 같은 무게로 맞춰 액션 줄이 둘로 갈라져 보이지 않게 한다. */
+.mypage-card__edit {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  font-size: 13px;
+  font-weight: 600;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+.mypage-card__edit:hover { color: var(--color-ink-900); }
+
+/* ── 기록 블록 (가본 곳 카드 안) ───────────────────────────────
+   왼쪽 선 하나로 본문과 구분한다. 상자로 감싸면 카드 안에 카드가 생겨
+   그림자 없이도 층이 두 겹으로 보인다 (DESIGN 10장 — 그림자는 결과 카드에만). */
+.mypage-card__record {
+  margin-top: 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--color-line);
+}
+
+.mypage-card__verdict {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* 색만으로 구분하지 않는다 — 얼굴과 글자가 함께 바뀌므로 흑백에서도 읽힌다.
+   「또 올래요」에만 빨강을 쓰는 것은 이 값이 이 서비스의 핵심 지표(재방문율)이기 때문이다
+   (DESIGN 10장 — 토마토 레드는 CTA·선택 상태·재방문율 숫자에). */
+.mypage-card__verdict.is-yes .mypage-card__verdict-text { color: var(--color-primary-hover); }
+.mypage-card__verdict.is-no  .mypage-card__verdict-text { color: var(--color-ink-700); }
+
+/* 얼굴은 글꼴 크기만 키우고 색을 주지 않는다 — 이모지는 자기 색을 갖는다. */
+.mypage-card__verdict-face { font-size: 15px; line-height: 1; }
+
+/* 남이 쓴 리뷰가 아니라 **내가 쓴 한 줄**이다. 인용부호로 감싸 그 결을 살린다.
+   ::before/::after라 복사할 때는 따라붙지 않는다. */
+.mypage-card__note {
+  margin-top: 4px;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  font-size: 14px;
+}
+.mypage-card__note::before { content: "\201C"; }
+.mypage-card__note::after  { content: "\201D"; }
+
+/* 삭제 — 정사각형 아이콘 버튼.
+   ×는 글꼴의 문자이지 이모지가 아니다 (DESIGN 7장은 이모지를 UI로 쓰는 것을 막는다).
+   문자만으로는 뜻이 전해지지 않으므로 aria-label을 mypage.js가 붙인다. */
+.mypage-card__remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: var(--color-ink-500);      /* 흰 배경 4.69:1 — 보조 동작이라 조용히 둔다 */
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+}
+.mypage-card__remove:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+.mypage-card__remove:disabled {
+  cursor: default;
+  color: var(--color-ink-300);
+  border-color: var(--color-line);
+}
+
+/* ============================================================
+   방문 기록 입력창 (UI-CONTRACT 「.visit-dialog」)
+
+   수치는 style.css의 .auth-dialog와 맞췄다 — 같은 사이트에서 뜨는
+   두 모달이 다른 크기·여백을 가지면 따로 만든 티가 난다.
+   여기 두는 이유는 이 창이 마이페이지에만 있기 때문이다.
+   두 페이지가 쓰게 되면 style.css로 옮긴다.
+   ============================================================ */
+.visit-dialog {
+  width: min(400px, calc(100vw - 32px));
+  max-width: 400px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  /* 그림자는 결과 카드에만 쓰지만(DESIGN 10장), 모달은 배경 위에 떠 있음을
+     알려야 한다. .auth-dialog·.review-panel과 같은 예외로 둔다. */
+  box-shadow: var(--shadow-result);
+  color: var(--color-ink-900);
+}
+
+.visit-dialog::backdrop { background: rgba(26, 22, 20, 0.4); }
+
+.visit-dialog__inner { padding: 24px; }
+
+.visit-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.visit-dialog__title { margin: 0; }
+
+.visit-dialog__close {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  background: none;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-full);
+  padding: 6px 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.visit-dialog__close:hover { color: var(--color-ink-900); border-color: var(--color-ink-300); }
+
+/* 어느 가게 이야기인지. 카드 여러 장 중 하나를 눌러 연 창이라 반드시 있어야 한다. */
+.visit-dialog__place {
+  margin: 0 0 20px;
+  color: var(--color-ink-700);
+  font-weight: 600;
+}
+
+.visit-dialog__form { display: block; }
+
+/* fieldset의 브라우저 기본 테두리·여백을 걷어낸다. */
+.visit-dialog__field {
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+  min-width: 0;                     /* fieldset 기본값이 min-content라 그리드/플렉스에서 삐져나온다 */
+}
+
+.visit-dialog__label {
+  display: block;
+  padding: 0;                       /* legend의 좌우 기본 padding 제거 */
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  margin-bottom: 8px;
+}
+
+/* ── 또 올까 (필수) ────────────────────────────────────────────
+   두 칸을 같은 폭으로. 한쪽이 넓으면 그쪽이 권장 답으로 읽힌다 —
+   재방문율은 이 서비스의 핵심 지표라 답을 유도하면 안 된다. */
+.visit-dialog__choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.visit-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: 12px 8px;
+  background: var(--color-bg);
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease),
+              background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+.visit-choice:hover { border-color: var(--color-ink-300); }
+
+/* 선택 상태 — 토마토 레드를 쓰는 자리다 (DESIGN 10장).
+   색만으로 구분하지 않는다: 테두리 굵기 대신 **면(tint)**이 함께 바뀌므로
+   흑백에서도 두 상태가 갈린다. aria-pressed도 함께 바뀐다. */
+.visit-choice.is-selected {
+  background: var(--color-primary-tint);
+  border-color: var(--color-primary);
+  /* primary-tint(#FDF0EE) 위에서는 대비가 떨어진다 (CLAUDE.md ⑥).
+     실제 배경 기준으로 재서 primary가 아니라 한 단계 어두운 hover 값을 쓴다. */
+  color: var(--color-primary-hover);
+}
+
+.visit-choice:disabled { cursor: default; opacity: 0.6; }
+
+/* 얼굴은 크기만 키우고 색을 주지 않는다 — 이모지는 자기 색을 갖는다. */
+.visit-choice__face { font-size: 24px; line-height: 1; }
+
+/* 글자는 얼굴과 세로로 쌓인다. 기본 line-height(1.5)를 그대로 두면
+   두 줄 사이가 gap보다 넓어져 칸 높이가 흔들린다. */
+.visit-choice__text { line-height: 1.2; }
+
+/* ── 한 줄 기록 (선택) ─────────────────────────────────────────
+   placeholder를 회색으로만 두면 입력값과 헷갈린다. 힌트 줄을 따로 둬서
+   「비워도 된다」를 말로 알린다 — 기록을 강요하지 않는 것이 이 화면의 약속이다. */
+.visit-dialog__input {
+  font: inherit;
+  font-size: 16px;   /* 16px 미만이면 iOS 사파리가 포커스 시 화면을 확대한다 */
+  width: 100%;
+  color: var(--color-ink-900);
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 11px 12px;
+}
+.visit-dialog__input:focus { outline: none; border-color: var(--color-ink-300); }
+.visit-dialog__input:disabled { background: var(--color-surface-alt); color: var(--color-ink-500); }
+
+.visit-dialog__hint {
+  margin-top: 6px;
+  color: var(--color-ink-500);      /* 흰 배경 4.69:1 */
+}
+
+/* 문구가 없을 때 자리를 잡아두지 않는다 — 창 높이가 흔들리면 버튼이 움직인다.
+   대신 :empty가 아닐 때만 위아래 여백을 준다. */
+.visit-dialog__status {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  color: var(--color-ink-700);
+}
+.visit-dialog__status:not(:empty) { margin: 4px 0 14px; }
+.visit-dialog__status--error { color: var(--color-error); }
+
+.visit-dialog__actions { margin-top: 4px; }
+
+.visit-dialog__submit {
+  font: inherit;
+  width: 100%;
+  min-height: 48px;
+  background: var(--color-primary);
+  color: #FFFFFF;
+  font-size: 16px;
+  font-weight: 700;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.visit-dialog__submit:hover:not(:disabled) { background: var(--color-primary-hover); }
+.visit-dialog__submit:disabled { background: var(--color-ink-300); cursor: default; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mypage-card,
+  .mypage-card__remove,
+  .mypage-card__link,
+  .mypage-card__visit,
+  .mypage-card__edit,
+  .mypage-header__back,
+  .visit-choice,
+  .visit-dialog__submit { transition: none; }
+}

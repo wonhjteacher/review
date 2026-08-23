@@ -581,6 +581,26 @@ button {
 
 /* 로그인 버튼. 토마토 레드는 CTA·선택 상태·재방문율 숫자에만 쓴다(DESIGN 10장).
    여기는 상시 노출되는 보조 동작이라 1px 테두리로 구분한다. */
+/* 마이페이지 — 로그인/로그아웃과 같은 알약이지만 링크다.
+   font: inherit이 통하지 않는 <a>라서 글자 속성을 직접 적는다.
+   밑줄을 지우는 이유 — 옆의 두 버튼과 한 줄에 서므로 셋이 같은 무게로 읽혀야 한다. */
+.site-auth__mypage {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-full);
+  padding: 8px 14px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.site-auth__mypage:hover {
+  color: var(--color-ink-900);
+  border-color: var(--color-ink-300);
+}
+
 .site-auth__button,
 .site-auth__signout {
   font: inherit;

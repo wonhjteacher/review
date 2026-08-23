@@ -6,7 +6,7 @@
    구글 Places 리뷰는 월 1,000건까지만 무료다.
    같은 가게를 다시 열 때 네트워크를 타지 않게 하는 것이 이 파일의 유일한 일이다.
 
-   담아둔 곳(storage.js)과 달리 **sessionStorage**를 쓴다.
+   담아둔 곳(saved-places.js)과 달리 **sessionStorage**를 쓴다.
    리뷰는 남의 데이터이고 시간이 지나면 낡는다 —
    탭을 닫으면 같이 사라지는 편이 맞다. 영속시키면 몇 달 전 리뷰를 새것처럼 보여준다.
 
@@ -24,7 +24,7 @@ window.ReviewCache = (function () {
   var MAX_ENTRIES = 120;
 
   /* sessionStorage는 사파리 프라이빗 모드 등에서 접근만으로도 throw한다.
-     storage.js와 같은 이유·같은 방식으로 실제 써보고 판단한다.
+     막힌 환경에서 접근만으로도 throw하므로 실제로 한 번 써보고 판단한다.
      못 쓰면 메모리로 폴백한다 — 새로고침하면 캐시가 비지만 기능은 죽지 않는다. */
   var available = (function () {
     try {

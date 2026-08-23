@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>담아둔 맛집 — 오늘은 여기</title>
+
+  <!-- 폰트 4줄은 index.html 9~12행 · save.html 11~14행과 완전히 동일하게 유지한다.
+       style.css가 font-family: 'Inter','Pretendard',... 를 선언하므로
+       이 줄들이 없으면 에러 없이 시스템 폰트로 조용히 떨어진다 (CLAUDE.md ⑦). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="mypage.css">
+</head>
+<!-- .container·.container--wide를 셋 다 붙인다. --wide만 붙이면 margin: 0 auto와
+     좌우 padding이 빠져 페이지가 왼쪽에 붙는다 (CLAUDE.md ⑧).
+     data-page는 auth.js가 읽는다 — 이 페이지에서는 마이페이지 링크를 빼기 위해서다. -->
+<body class="mypage-page container container--wide" data-page="mypage">
+
+<!-- 로그인 (UI-CONTRACT 「.site-auth」). 비워둔다 — auth.js가 상태에 따라 채운다.
+     세션 복원 전에는 일부러 비어 있다: 로그인한 사용자에게 로그인 버튼이 깜빡이지 않게. -->
+<div class="site-auth" id="site-auth"></div>
+
+  <header class="mypage-header">
+    <a class="mypage-header__back" href="save.html">← 맛집 담기</a>
+    <h1 class="h1 mypage-header__title">담아둔 맛집</h1>
+    <p class="body mypage-header__desc">담아둔 곳 중에서 오늘 갈 한 곳을 고르세요</p>
+  </header>
+
+  <!-- 상태 한 줄 (불러오는 중 · 오류 · 해제 결과).
+       save.html의 토스트를 가져오지 않은 이유 — 이 페이지는 카드가 사라지는 것으로
+       이미 결과를 보여준다. 말이 필요한 것은 실패했을 때뿐이라 흐름 안에 한 줄만 둔다. -->
+  <p class="mypage__status" id="mypage-status" role="status" aria-live="polite"></p>
+
+  <!-- 비로그인·비어 있음 안내가 들어가는 자리. mypage.js가 채운다. -->
+  <div class="mypage__notice" id="mypage-notice"></div>
+
+  <!-- 두 그룹. 「가볼 곳」이 위인 것은 이 서비스가 **결정**을 돕는 서비스이기 때문이다 —
+       오늘 어디 갈지 고르는 사람에게 먼저 보여야 하는 것은 아직 안 가본 곳이다.
+       그룹이 비면 mypage.js가 섹션째 감춘다 (hidden 속성). -->
+  <section class="mypage-group" id="group-to-visit" hidden>
+    <h2 class="h2 mypage-group__title">가볼 곳 <span class="mypage-group__count" id="count-to-visit">0</span></h2>
+    <ul class="mypage-list plain-list" id="list-to-visit"></ul>
+  </section>
+
+  <section class="mypage-group" id="group-visited" hidden>
+    <h2 class="h2 mypage-group__title">가본 곳 <span class="mypage-group__count" id="count-visited">0</span></h2>
+    <ul class="mypage-list plain-list" id="list-visited"></ul>
+  </section>
+
+<!-- 방문 기록 입력창 (UI-CONTRACT 「.visit-dialog」)
+     <dialog>인 이유는 .review-panel·.auth-dialog와 같다 — showModal()이
+     포커스 가둠·Esc 닫기·배경 비활성을 브라우저에게서 공짜로 준다.
+     novalidate인 이유 — 브라우저 기본 말풍선 대신 `~해요`체 문구를 쓰기 위해서다. -->
+<dialog class="visit-dialog" id="visit-dialog" aria-labelledby="visit-dialog-title">
+  <div class="visit-dialog__inner">
+    <header class="visit-dialog__head">
+      <h2 class="h2 visit-dialog__title" id="visit-dialog-title">다녀왔어요</h2>
+      <button type="button" class="visit-dialog__close" data-action="close-visit" aria-label="닫기">닫기</button>
+    </header>
+
+    <p class="body visit-dialog__place" id="visit-dialog-place"></p>
+
+    <form class="visit-dialog__form" id="visit-form" novalidate>
+      <!-- ① 또 올까 — **필수.** 이 서비스가 쌓으려는 데이터가 이것이다.
+           radio가 아니라 button인 이유: 두 칸이 큰 터치 영역이어야 하고,
+           선택 상태를 aria-pressed로 알리면 기본 라디오 모양을 지우는 CSS가 필요 없다. -->
+      <fieldset class="visit-dialog__field">
+        <legend class="visit-dialog__label">또 올까요</legend>
+        <div class="visit-dialog__choices">
+          <button type="button" class="visit-choice" data-return="yes" aria-pressed="false">
+            <span class="visit-choice__face" aria-hidden="true">&#128522;</span>
+            <span class="visit-choice__text">또 올래요</span>
+          </button>
+          <button type="button" class="visit-choice" data-return="no" aria-pressed="false">
+            <span class="visit-choice__face" aria-hidden="true">&#129300;</span>
+            <span class="visit-choice__text">글쎄요</span>
+          </button>
+        </div>
+      </fieldset>
+
+      <!-- ② 한 줄 기록 — **선택.** 비워도 저장된다. required를 붙이지 않는다. -->
+      <div class="visit-dialog__field">
+        <label class="visit-dialog__label" for="visit-note">한 줄 기록</label>
+        <input class="visit-dialog__input" id="visit-note" type="text" name="note"
+               maxlength="100" autocomplete="off"
+               placeholder="어땠는지 한 줄만 남겨보세요">
+        <p class="caption visit-dialog__hint">비워두어도 저장돼요</p>
+      </div>
+
+      <p class="visit-dialog__status" id="visit-status" role="status" aria-live="polite"></p>
+
+      <div class="visit-dialog__actions">
+        <button type="submit" class="visit-dialog__submit">저장</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- 로그인 창 (UI-CONTRACT 「.auth-dialog」)
+     save.html 것과 동일한 마크업이다. auth.js가 id로 찾으므로 id를 바꾸지 않는다.
+     novalidate인 이유 — 브라우저 기본 말풍선 대신 `~해요`체 문구를 쓰기 위해서다. -->
+<dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-dialog-title">
+  <div class="auth-dialog__inner">
+    <header class="auth-dialog__head">
+      <h2 class="h2 auth-dialog__title" id="auth-dialog-title">로그인</h2>
+      <button type="button" class="auth-dialog__close" data-action="close-auth" aria-label="닫기">닫기</button>
+    </header>
+
+    <form class="auth-dialog__form" id="auth-form" novalidate>
+      <div class="auth-dialog__field">
+        <label class="auth-dialog__label" for="auth-email">이메일</label>
+        <input class="auth-dialog__input" id="auth-email" type="email" name="email"
+               autocomplete="email" placeholder="you@example.com">
+      </div>
+      <div class="auth-dialog__field">
+        <label class="auth-dialog__label" for="auth-password">비밀번호</label>
+        <input class="auth-dialog__input" id="auth-password" type="password" name="password"
+               autocomplete="current-password" placeholder="6자 이상">
+      </div>
+
+      <p class="auth-dialog__status" id="auth-status" role="status" aria-live="polite"></p>
+
+      <div class="auth-dialog__actions">
+        <button type="submit" class="auth-dialog__submit">로그인</button>
+        <button type="button" class="auth-dialog__signup" data-action="sign-up">회원가입</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- Supabase (UMD 번들 — 이 프로젝트는 빌드 도구가 없다).
+     버전은 save.html·index.html과 같은 값으로 고정한다.
+     이 줄이 막히면 auth.js가 .site-auth__error를 그리고 목록은 비어 있게 된다. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"></script>
+<script src="auth.js"></script>
+<script src="saved-places.js"></script>
+<script src="mypage.js"></script>
+</body>
+</html>

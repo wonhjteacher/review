@@ -3,7 +3,8 @@
  * 사양은 UI-CONTRACT.md의 「`.site-auth`」·「`.auth-dialog`」·「안내 문구」·「`window.Auth`」다.
  *
  * **다른 파일이 `window.supabase`를 직접 만지지 않는다.**
- * `storage.js`가 localStorage를, `review-cache.js`가 sessionStorage를 혼자 맡는 것과 같은 규칙이다.
+ * `saved-places.js`가 saved_places 테이블을, `review-cache.js`가 sessionStorage를
+ * 혼자 맡는 것과 같은 규칙이다. DB가 필요한 쪽은 `Auth.client()`로 받아간다.
  * 창구가 하나여야 로그인 판정이 한 곳에서만 바뀐다.
  *
  * 비밀번호는 **한 글자도 우리가 다루지 않는다.** 입력값을 그대로 Supabase에 넘기고 버린다.
@@ -134,6 +135,16 @@ window.Auth = (function () {
     if (!client) {
       slot.appendChild(el('span', 'site-auth__error', '로그인 기능을 불러오지 못했어요'));
       return;
+    }
+
+    /* 마이페이지는 로그인 여부와 상관없이 낸다. 비로그인으로 들어가도
+       그 페이지가 「로그인하면 담은 맛집을 볼 수 있어요」로 받아주므로,
+       숨기면 들어갈 길만 사라지고 얻는 것이 없다.
+       자기 페이지에서는 빼둔다 — 지금 보고 있는 곳으로 가는 링크는 소음이다. */
+    if (document.body && document.body.getAttribute('data-page') !== 'mypage') {
+      var mypage = el('a', 'site-auth__mypage', '마이페이지');
+      mypage.href = 'mypage.html';
+      slot.appendChild(mypage);
     }
 
     if (currentUser) {
@@ -399,5 +410,11 @@ window.Auth = (function () {
     open: open,
     close: close,
     signOut: signOut,
+
+    /* 데이터 접근이 필요한 모듈(saved-places.js)이 여기서 클라이언트를 받아간다.
+       「다른 파일이 window.supabase를 직접 만지지 않는다」는 규칙은 그대로다 —
+       창구를 여기 하나로 유지하려고 새 전역을 만들지 않고 이 함수를 낸다.
+       불러오기에 실패했으면 null이므로 **쓰는 쪽이 반드시 확인한다.** */
+    client: function () { return client; },
   };
 })();

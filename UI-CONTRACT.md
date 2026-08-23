@@ -282,12 +282,17 @@
 <li class="saved-item" data-kakao-id="{id}">
   <div class="saved-item__body">
     <p class="h2 saved-item__name">{name}</p>
-    <p class="caption saved-item__category">{category}</p>
+    <p class="caption saved-item__category">{road_address_name}</p>
   </div>
   <button type="button" class="saved-item__remove" data-action="remove"
           aria-label="{name} 담기 해제">해제</button>
 </li>
 ```
+
+**`.saved-item__category`에 담기는 값은 카테고리가 아니라 주소다.**
+저장소가 `saved_places` 테이블로 옮겨가면서 카테고리 컬럼이 없어졌기 때문이다.
+클래스 이름을 새로 지어내지 않고(⑦) 이 줄의 자리를 주소에 내주었다 — 이름과 내용이
+어긋나 있으니 나중에 카테고리를 저장하게 되면 여기를 먼저 본다.
 
 ---
 
@@ -509,9 +514,12 @@ Content-Type: application/json
 <div class="site-auth" id="site-auth"></div>
 ```
 
-`auth.js`가 그리는 두 가지 모양이다. **셋 중 하나만 화면에 있다.**
+`auth.js`가 그리는 모양이다. **①~③ 중 하나만 화면에 있고, 그 앞에 마이페이지 링크가 붙는다.**
 
 ```html
+<!-- ⓪ 마이페이지 — ①·②와 **함께** 나온다. ③(모듈 실패)일 때는 나오지 않는다 -->
+<a class="site-auth__mypage" href="mypage.html">마이페이지</a>
+
 <!-- ① 로그아웃 상태 -->
 <button type="button" class="site-auth__button" data-action="open-auth">로그인</button>
 
@@ -522,6 +530,10 @@ Content-Type: application/json
 <!-- ③ 인증 모듈을 못 불러온 상태 (CDN 차단 등) -->
 <span class="site-auth__error">로그인 기능을 불러오지 못했어요</span>
 ```
+
+**마이페이지 링크는 로그인 여부와 무관하게 나온다.** 비로그인으로 들어가도 그 페이지가
+「로그인하면 담은 맛집을 볼 수 있어요」로 받아주므로, 숨기면 들어갈 길만 사라진다.
+**단 마이페이지 자신에서는 빼둔다** — `auth.js`가 `<body data-page="mypage">`를 보고 판단한다.
 
 **세션 복원이 끝나기 전에는 아무것도 그리지 않는다.** `localStorage`에서 세션을 되살리는 데
 한 틱이 걸리는데, 그동안 `로그인`을 그려두면 **로그인한 사용자에게 로그인 버튼이 깜빡인다.**
@@ -603,7 +615,8 @@ Supabase는 비밀번호 오류와 미가입 계정에 **같은 코드를 돌려
 ## `window.Auth` — 로그인 상태를 다른 기능이 가져다 쓰는 창구
 
 담당은 `auth.js` 하나뿐이다. **다른 파일이 `window.supabase`를 직접 만지지 않는다** —
-`storage.js`·`review-cache.js`와 같은 규칙이다.
+`saved-places.js`·`review-cache.js`와 같은 규칙이다.
+DB에 접근해야 하는 `saved-places.js`도 새 전역을 만들지 않고 `Auth.client()`로 받아간다.
 
 | 이름 | 반환 | 설명 |
 |---|---|---|
@@ -616,6 +629,7 @@ Supabase는 비밀번호 오류와 미가입 계정에 **같은 코드를 돌려
 | `Auth.requireSignIn(reason)` | `boolean` | 로그인돼 있으면 `true`. 아니면 창을 띄우고 `false` |
 | `Auth.open(reason)` / `Auth.close()` | — | 창 열고 닫기 |
 | `Auth.signOut()` | `Promise<void>` | |
+| `Auth.client()` | supabase client \| `null` | **데이터 접근 창구.** `saved-places.js`가 쓴다. CDN이 막히면 `null`이라 **쓰는 쪽이 반드시 확인한다** |
 
 **로그인 여부에 따라 달라지는 UI는 `getUser()`를 직접 읽지 말고 `onChange`로 그린다.**
 `getUser()`는 복원 전에 `null`이라, 페이지 로드 직후에 읽으면 **로그인한 사용자를 비로그인으로 본다.**
@@ -639,9 +653,239 @@ if (window.Auth.isSignedIn()) { … }
 <p class="saved__locked">로그인하면 마음에 든 곳을 담아둘 수 있어요</p>
 ```
 
-`.saved-list`를 **지우지 않고** 이 문단을 위에 둔다. 이미 담아둔 목록이 있는 사용자의
-데이터를 화면에서 없애지 않기 위해서다 — 저장은 아직 브라우저 로컬(`storage.js`)이고
-계정과 묶여 있지 않다. 계정 기반 저장은 F7 다음 단계다.
+`.saved-list`를 **지우지 않고** 이 문단을 위에 둔다.
+비로그인일 때 목록은 어차피 비어 있다 — 저장이 `saved_places` 테이블 + RLS로 계정에
+묶여 있어, 로그인해야 내 것이 돌아오기 때문이다.
+
+---
+
+## `window.SavedPlaces` — 담아둔 곳 저장소 (`saved-places.js`)
+
+저장소는 Supabase `saved_places` 테이블 **하나뿐이다.** `localStorage`를 쓰던
+`storage.js`는 지웠다 — 두 저장소가 섞이면 어느 쪽이 진실인지 알 수 없다.
+
+**화면은 동기, 저장은 비동기다.** `renderResults()`는 카드를 그리는 도중에 담김 여부를
+물어보므로 거기서 기다릴 수 없다. 그래서 로그인하면 내 목록을 한 번 받아 메모리 색인에
+넣어두고, 조회는 그 색인만 본다.
+
+| 이름 | 반환 | 설명 |
+|---|---|---|
+| `SavedPlaces.ready` | `Promise<void>` | 첫 응답이 끝나면 resolve. **실패해도 resolve된다** |
+| `SavedPlaces.isLoaded()` | `boolean` | 서버 응답을 받아봤는지. 「비어 있음」과 「아직 모름」을 가른다 |
+| `SavedPlaces.error()` | `error` \| `null` | 마지막 읽기 실패 |
+| `SavedPlaces.list()` | `Item[]` | **동기.** 최신순 |
+| `SavedPlaces.has(placeId)` | `boolean` | **동기.** 메모리 색인 |
+| `SavedPlaces.get(placeId)` | `Item` \| `null` | **동기** |
+| `SavedPlaces.count()` | `number` | **동기** |
+| `SavedPlaces.add(place)` | `Promise<{ok, already?, reason?}>` | 카카오 원본 필드명으로 넘긴다 |
+| `SavedPlaces.remove(placeId)` | `Promise<{ok, reason?}>` | |
+| `SavedPlaces.refresh()` | `Promise<void>` | 서버에서 다시 읽는다 |
+| `SavedPlaces.isVisited(placeId)` | `boolean` | **동기.** `visitedAt`이 있는지 |
+| `SavedPlaces.toVisit()` | `Item[]` | **동기.** 안 가본 곳 — 담은 순 |
+| `SavedPlaces.visited()` | `Item[]` | **동기.** 다녀온 곳 — **다녀온 순** |
+| `SavedPlaces.saveVisit(placeId, {wouldReturn, note})` | `Promise<{ok, reason?}>` | 방문 기록. `wouldReturn`만 필수 |
+| `SavedPlaces.onChange(fn)` | `() => void` | 구독. **등록 즉시 한 번 호출된다.** 반환값은 해제 함수 |
+
+`add()`에 넘기는 것과 `list()`가 돌려주는 것의 **이름이 다르다.** 앞은 카카오 검색 결과
+그대로이고, 뒤는 화면용으로 정규화한 모양이다.
+
+```js
+// add() — /api/search가 준 place 객체의 필드명 그대로
+{ id, place_name, road_address_name, x, y, place_url }
+
+// list()·get() — 정규화된 Item
+{ rowId, id, name, address, x, y, url, savedAt,
+  visitedAt, note, wouldReturn }
+//  ↑행 uuid  ↑카카오 place id            ↑ms
+```
+
+**`visitedAt`은 `null` 아니면 ms다. 0으로 접지 않는다** — 0은 1970년이라 「다녀왔다」로 읽힌다.
+**`wouldReturn`은 `true`·`false`·`null` 셋이다.** `Boolean()`으로 감싸면 `null`(아직 답 안 함)과
+`false`(글쎄요)가 같아져 **「글쎄요」라고 답한 데이터가 사라진다.**
+
+**좌표는 문자열 그대로 둔다.** ⑬에 따라 `x`가 경도, `y`가 위도이고,
+`Number("")`는 `NaN`이 아니라 `0`이라 여기서 숫자로 바꾸면 좌표 없는 항목이
+조용히 기니만 앞바다를 가리킨다.
+
+### 읽을 때 `user_id`로 거르지 않는다
+
+```js
+.from('saved_places').select(...).order('created_at', { ascending: false })   // 이렇게
+.from('saved_places').select(...).eq('user_id', user.id)                      // 이렇게 말고
+```
+
+조건 없이 전체를 요청하면 RLS가 내 것만 돌려준다. 거르는 일은 창고(서버) 담당이다.
+프론트에서 한 번 더 거르면 **방어선이 프론트에 있는 것처럼 보여**, 나중에 그 줄을
+지웠을 때 뚫린 것을 눈치채지 못한다.
+
+같은 이유로 **`user_id`를 코드에서 만들어 넣지 않는다.** 컬럼 기본값 `auth.uid()`가 채운다.
+
+### 화면을 고치는 곳은 한 군데다
+
+`add()`·`remove()`가 성공하면 저장소가 `onChange`로 알린다. 부르는 쪽은 **직접 DOM을
+건드리지 않는다.** 낙관적으로 먼저 칠해두면 저장되지 않은 것이 담긴 것처럼 보이고,
+그 거짓말은 새로고침해야 드러난다.
+
+---
+
+### `saveVisit()` — 방문 기록
+
+담아둔 행을 **고친다.** 새 행을 만들지 않는다 — 방문 기록은 담아둔 곳의 속성이지 별개의 사건이 아니다.
+
+| 규칙 | 이유 |
+|---|---|
+| `wouldReturn`만 필수 | 재방문율이 이 서비스가 쌓으려는 데이터다 |
+| `note`가 비면 `null`로 넣는다 | 「안 썼다」와 「빈 줄을 썼다」를 DB에서 구별할 이유가 없다 |
+| `visited_at`은 **처음 기록할 때만** 넣는다 | 「기록 수정」에서 다시 넣으면 지난달에 간 곳이 오늘 간 것으로 덮인다 |
+
+> **돌려받은 행이 0건이면 실패로 처리한다.**
+> RLS에 `update` 정책이 없으면 고칠 대상이 0건으로 보여 PostgREST가 **`200 OK` + 빈 배열**을
+> 돌려준다 — 거절이 아니라 「0건 고쳤다」다. `error`만 보면 성공으로 읽혀서, 화면에는
+> `기록을 남겼어요`가 뜨고 새로고침하면 기록이 사라져 있다. **에러가 아니라 그럴듯한 실패다.**
+> `saveVisit()`이 이때 `reason: 'not_updated'`를 돌려준다.
+
+---
+
+## `.mypage-group` — 가볼 곳 / 가본 곳
+
+**탭이 아니라 구분 제목이다.** 탭은 한 번에 한쪽만 보여주는데, 담아둔 곳이 몇 개 안 되는
+초반에는 양쪽을 한눈에 보는 편이 「오늘 어디 가지」를 결정하는 데 낫다.
+
+```html
+<section class="mypage-group" id="group-to-visit" hidden>
+  <h2 class="h2 mypage-group__title">가볼 곳 <span class="mypage-group__count">0</span></h2>
+  <ul class="mypage-list plain-list" id="list-to-visit"></ul>
+</section>
+```
+
+- **가르는 기준은 `visitedAt`이 비어 있는지 하나뿐이다.** `note`나 `wouldReturn`은 보지 않는다 —
+  한 줄 기록은 선택이라 비어 있는 것이 정상이고, 기준에 넣으면 기록 없이 다녀온 곳이
+  영영 「가볼 곳」에 남는다
+- **「가볼 곳」이 위다.** 이 서비스는 결정을 돕는 서비스이고, 오늘 어디 갈지 고르는 사람에게
+  먼저 보여야 하는 것은 아직 안 가본 곳이다
+- **빈 그룹은 `hidden`으로 섹션째 감춘다.** 「가본 곳 0」이 서 있으면 아직 안 간 것을 채근하는 화면이 된다
+- 정렬이 다르다 — 가볼 곳은 **담은 순**, 가본 곳은 **다녀온 순**.
+  작년에 담아둔 곳을 오늘 다녀왔다면, 담은 순으로는 맨 아래에 남아
+  **방금 남긴 기록이 화면에서 사라진 것처럼 보인다**
+
+---
+
+## `.visit-dialog` — 방문 기록 입력창 (`<body>` 직속)
+
+`<dialog>`인 이유는 `.review-panel`·`.auth-dialog`와 같다 — `showModal()`이 포커스 가둠·
+Esc 닫기·배경 비활성을 브라우저에게서 공짜로 준다. 직접 만든 오버레이로 대체하지 않는다.
+
+**처음 기록할 때와 고칠 때가 같은 창이다.** 다른 것은 제목과 들어와 있는 값뿐이라 창을 둘로 만들지 않는다.
+
+| | 처음 | 고칠 때 |
+|---|---|---|
+| 제목 | `다녀왔어요` | `기록 수정` |
+| 또 올까 | 아무것도 안 골라짐 | 기존 답이 골라져 있음 |
+| 한 줄 기록 | 빈칸 | 기존 기록 |
+| 첫 포커스 | 「또 올래요」 버튼 | 한 줄 기록 칸 |
+
+```html
+<button type="button" class="visit-choice" data-return="yes" aria-pressed="false">
+  <span class="visit-choice__face" aria-hidden="true">&#128522;</span>
+  <span class="visit-choice__text">또 올래요</span>
+</button>
+```
+
+- **「또 올까」만 필수다.** 한 줄 기록은 비워도 저장된다 — `required`를 붙이지 않는다.
+  답 없이 저장하면 `또 올지 먼저 골라주세요`로 막고 창은 열어둔다
+- 두 칸을 **같은 폭**으로 둔다. 한쪽이 넓으면 그쪽이 권장 답으로 읽혀 재방문율 데이터가 기운다
+- 선택 상태는 `.is-selected` + `aria-pressed`. 색만으로 구분하지 않고 **면(tint)이 함께 바뀐다**
+- `radio`가 아니라 `button`인 이유 — 큰 터치 영역이 필요하고, `aria-pressed`로 알리면
+  기본 라디오 모양을 지우는 CSS가 필요 없다
+- 저장에 **실패하면 창을 닫지 않는다.** 닫으면 쓴 내용이 사라지고, 다시 쓰라는 말도 못 한다
+
+> **이모지 예외가 하나 늘었다.** `.analysis__face`(😀😐😠)에 이어 `.visit-choice__face`(😊🤔)와
+> `.mypage-card__verdict-face`가 예외다. 「또 올까」는 감정에 대한 질문이라 얼굴이 가장 짧은 표현이고,
+> **글자(`또 올래요`/`글쎄요`)가 항상 함께 있어** 이모지가 빠져도 뜻이 전달된다.
+> 얼굴에는 `aria-hidden`을 달아 낭독기가 글자만 읽게 한다.
+
+---
+
+## `.mypage-card` — 담아둔 맛집 카드 (`.mypage-list` 안, `<li>`)
+
+```html
+<li class="mypage-card" data-kakao-id="{id}">
+  <div class="mypage-card__body">
+    <h3 class="h2 mypage-card__name">{name}</h3>
+    <p class="body mypage-card__address">{address}</p>
+    <!-- 가볼 곳은 「…에 담았어요」, 가본 곳은 「…에 다녀왔어요」 -->
+    <p class="caption mypage-card__date">{YYYY}년 {M}월 {D}일에 담았어요</p>
+
+    <!-- 가본 곳에만 -->
+    <div class="mypage-card__record">
+      <p class="mypage-card__verdict is-yes">
+        <span class="mypage-card__verdict-face">&#128522;</span>
+        <span class="mypage-card__verdict-text">또 올래요</span>
+      </p>
+      <p class="body mypage-card__note">{note}</p>
+    </div>
+
+    <div class="mypage-card__actions">
+      <a class="mypage-card__link" href="{url}" target="_blank" rel="noopener noreferrer"
+         aria-label="{name} 카카오맵에서 보기">카카오맵 보기</a>
+      <!-- 가볼 곳 → .mypage-card__visit 「다녀왔어요」 -->
+      <!-- 가본 곳 → .mypage-card__edit  「기록 수정」  -->
+      <button type="button" class="mypage-card__visit" data-action="visit"
+              aria-label="{name} 다녀왔다고 기록하기">다녀왔어요</button>
+    </div>
+  </div>
+  <button type="button" class="mypage-card__remove" data-action="remove"
+          aria-label="{name} 목록에서 지우기">&times;</button>
+</li>
+```
+
+**두 그룹이 같은 카드를 쓴다.** 다른 것은 날짜 문구·기록 블록·액션 버튼 셋뿐이라
+카드를 둘로 나누지 않는다 — 나누면 이름·주소·카카오맵·삭제를 한쪽만 고치는 실수가 생긴다.
+
+`.mypage-card__record`는 **가본 곳에만** 붙는다. 그 안에서도 둘 다 없으면 없는 대로 둔다 —
+`.mypage-card__note`는 **선택이라 없는 것이 정상이고**, 「기록 없음」 같은 문구로 빈자리를
+채우지 않는다. 안 쓴 것을 나무라는 화면이 된다.
+
+`.mypage-card__address`와 `.mypage-card__link`는 **값이 없으면 요소째 뺀다.**
+주소가 없는 가게가 있어 빈 문단이 남으면 카드 높이만 들쭉날쭉해진다.
+
+**날짜 문구는 우리가 만든다.** `toLocaleDateString('ko-KR')`은 브라우저·OS 로케일에 따라
+`2026. 8. 23.`이 되기도 `8/23/2026`이 되기도 한다 — 화면에 나갈 문구는 우리가 정한다(DESIGN 7장).
+
+`×`는 글꼴의 문자이지 이모지가 아니라 「이모지를 UI 요소로 쓰지 않는다」에 걸리지 않는다.
+다만 낭독기에는 아무 뜻이 없으므로 `aria-label`을 **반드시** 붙인다.
+
+`.is-busy`는 지우는 동안 카드에 붙는다. 되돌리는 상태가 아니라 **성공하면 카드가 사라지므로**,
+실패했을 때만 떼어낸다.
+
+---
+
+## `.mypage__notice` — 비로그인 · 비어 있음 안내
+
+**두 상태가 같은 상자를 쓴다.** 둘 다 「문구 한 줄 + 버튼 하나」다.
+
+```html
+<div class="mypage__notice-box">
+  <p class="body-l mypage__notice-text">{message}</p>
+  <div class="action mypage__notice-action">
+    <button type="button" class="btn-primary">{actionText}</button>
+  </div>
+</div>
+```
+
+| 상태 | 문구 | 버튼 | 누르면 |
+|---|---|---|---|
+| 비로그인 | `로그인하면 담은 맛집을 볼 수 있어요` | `로그인` | `Auth.open()` |
+| 비어 있음 | `아직 담은 맛집이 없어요` | `맛집 검색하러 가기` | `save.html`로 이동 |
+
+**화면이 가질 수 있는 상태는 넷이고 한 번에 하나만 그린다** — 비로그인 · 불러오는 중 ·
+읽기 실패 · (목록 또는 비어 있음). 섞이면 「로그인하세요」와 카드 목록이 함께 보인다.
+
+불러오는 중과 읽기 실패는 상자가 아니라 `.mypage__status` 한 줄로 알린다.
+
+> **`isLoaded()`를 보지 않으면 「불러오는 중」이 「비어 있음」으로 보인다.**
+> 목록이 도착하기 전에도 `list()`는 빈 배열이라, 담아둔 것이 있는 사용자에게
+> 잠깐 `아직 담은 맛집이 없어요`가 스친다. ⑰과 같은 계열의 함정이다.
 
 ---
 
