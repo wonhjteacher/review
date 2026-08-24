@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>담아둔 맛집 — 오늘은 여기</title>
+  <title>맛집주머니 — 오늘은 여기</title>
 
   <!-- 폰트 4줄은 index.html 9~12행 · save.html 11~14행과 완전히 동일하게 유지한다.
        style.css가 font-family: 'Inter','Pretendard',... 를 선언하므로
@@ -18,7 +18,8 @@
 </head>
 <!-- .container·.container--wide를 셋 다 붙인다. --wide만 붙이면 margin: 0 auto와
      좌우 padding이 빠져 페이지가 왼쪽에 붙는다 (CLAUDE.md ⑧).
-     data-page는 auth.js가 읽는다 — 이 페이지에서는 마이페이지 링크를 빼기 위해서다. -->
+     data-page는 auth.js가 읽는다 — 이 페이지에서는 맛집주머니 링크를 빼고
+     그 자리에 홈 링크를 대신 내기 위해서다. -->
 <body class="mypage-page container container--wide" data-page="mypage">
 
 <!-- 로그인 (UI-CONTRACT 「.site-auth」). 비워둔다 — auth.js가 상태에 따라 채운다.
@@ -27,7 +28,7 @@
 
   <header class="mypage-header">
     <a class="mypage-header__back" href="save.html">← 맛집 담기</a>
-    <h1 class="h1 mypage-header__title">담아둔 맛집</h1>
+    <h1 class="h1 mypage-header__title">맛집주머니</h1>
     <p class="body mypage-header__desc">담아둔 곳 중에서 오늘 갈 한 곳을 고르세요</p>
   </header>
 
@@ -98,6 +99,30 @@
         <button type="submit" class="visit-dialog__submit">저장</button>
       </div>
     </form>
+  </div>
+</dialog>
+
+<!-- 삭제 확인창 (UI-CONTRACT 「.remove-dialog」)
+     <dialog>인 이유는 .visit-dialog·.auth-dialog와 같다 — showModal()이
+     포커스 가둠·Esc 닫기·배경 비활성을 브라우저에게서 공짜로 준다.
+     「×」를 눌러도 곧바로 지우지 않는다 — 가본 곳 카드는 방문 기록까지
+     함께 지워지는데 되돌릴 방법이 없다. 가볼 곳/가본 곳을 가르지 않고
+     모든 카드에 같은 확인창을 띄운다. -->
+<dialog class="remove-dialog" id="remove-dialog" aria-labelledby="remove-dialog-title">
+  <div class="remove-dialog__inner">
+    <header class="remove-dialog__head">
+      <h2 class="h2 remove-dialog__title" id="remove-dialog-title">목록에서 지울까요?</h2>
+      <button type="button" class="remove-dialog__close" data-action="close-remove" aria-label="닫기">닫기</button>
+    </header>
+
+    <p class="body remove-dialog__place" id="remove-dialog-place"></p>
+
+    <p class="remove-dialog__status" id="remove-status" role="status" aria-live="polite"></p>
+
+    <div class="remove-dialog__actions">
+      <button type="button" class="remove-dialog__cancel" data-action="close-remove">취소</button>
+      <button type="button" class="remove-dialog__confirm" data-action="confirm-remove">지우기</button>
+    </div>
   </div>
 </dialog>
 

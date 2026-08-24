@@ -19,14 +19,19 @@
 <!-- 상단 내비게이션 — 주요 메뉴로 바로 이동. index.html 전용이다.
      .site-auth(로그인)와 같은 줄에 겹쳐 보이도록 fixed로 얹는다 — style.css 참고.
      "추천"은 로그인한 사람에게만 의미가 있는 코너라 #for-you와 마찬가지로
-     hidden으로 시작하고, home.js가 #for-you를 열고 닫을 때 같이 맞춘다. -->
+     hidden으로 시작하고, home.js가 #for-you를 열고 닫을 때 같이 맞춘다.
+
+     "홈" 알약이 브랜드 글자와 겹쳐 보이지만 겹치는 것이 아니다 —
+     .site-nav__brand는 모바일에서 display:none이라(style.css), 그 폭에서는
+     맨 위로 갈 길이 이 알약 하나뿐이다. 알약 줄은 가로 스크롤되므로
+     .site-auth와 겹칠 걱정 없이 여기에 둘 수 있다. -->
 <header class="site-nav" id="site-nav">
   <div class="site-nav__top-inner container container--wide">
     <a class="site-nav__brand" href="#hero">오늘은 여기</a>
   </div>
   <nav class="site-nav__menu" aria-label="주요 메뉴">
     <div class="site-nav__menu-inner container container--wide">
-      <a class="site-nav__pill" href="#demo" data-nav="demo">데모</a>
+      <a class="site-nav__pill" href="#hero" data-nav="hero">홈</a>
       <a class="site-nav__pill" href="save.html">담기</a>
       <a class="site-nav__pill" href="#popular" data-nav="popular">인기</a>
       <a class="site-nav__pill" href="#for-you" id="site-nav-foryou" data-nav="for-you" hidden>추천</a>

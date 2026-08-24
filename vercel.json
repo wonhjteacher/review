@@ -3,6 +3,9 @@
   "functions": {
     "api/analyze.js": {
       "maxDuration": 30
+    },
+    "api/reviews.js": {
+      "maxDuration": 20
     }
   }
 }

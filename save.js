@@ -78,6 +78,10 @@
   var panelName = document.getElementById('review-panel-name');
   var panelBody = document.getElementById('review-panel-body');
 
+  var photoViewer = document.getElementById('photo-viewer');
+  var photoViewerImg = document.getElementById('photo-viewer-img');
+  var photoViewerCaption = document.getElementById('photo-viewer-caption');
+
   /* 마지막 검색에서 받은 장소를 id로 찾을 수 있게 들고 있는다.
      담기 버튼이 눌렸을 때 DOM을 되읽지 않고 원본 값을 그대로 저장하기 위해서다. */
   var placesById = Object.create(null);
@@ -96,6 +100,15 @@
   /* 패널을 열기 직전에 포커스가 있던 요소. 닫을 때 여기로 되돌린다.
      showModal()은 포커스를 가둬주지만, 닫은 뒤 어디로 돌려놓을지는 정해주지 않는다. */
   var panelOpener = null;
+
+  /* 사진 창도 같은 이유로 눌렀던 썸네일을 들고 있는다.
+     리뷰 패널과 **따로** 관리한다 — 사진을 닫아도 리뷰 패널은 열린 채이기 때문이다. */
+  var photoOpener = null;
+
+  /* 지금 패널에 그려진 사진들. 썸네일을 눌렀을 때 index로 찾는다.
+     DOM에서 되읽지 않는 이유는 mypage.js의 editing과 같다 —
+     그리는 중에 목록이 바뀌어도 대상이 흔들리지 않게. */
+  var panelPhotos = [];
 
   /* --- 상태 줄 -------------------------------------------------- */
 
@@ -282,6 +295,9 @@
 
   function clearPanelBody() {
     panelBody.textContent = '';
+    /* 사진 목록도 함께 비운다. 남겨두면 A 가게에서 B 가게로 옮겼을 때
+       썸네일은 B인데 크게 보기는 A가 뜬다 — 인덱스만으로 찾기 때문이다. */
+    panelPhotos = [];
   }
 
   function panelStatus(modifier, message) {
@@ -308,6 +324,115 @@
     // 스크린리더가 "검은 별"을 읽지 않게 한다. 점수는 옆 숫자가 이미 말한다.
     node.setAttribute('aria-hidden', 'true');
     return node;
+  }
+
+  /* --- 가게 사진 (UI-CONTRACT 「.review-photos」) -----------------
+     가게 이름 아래이자 별점 위다. 서버가 이미 3장으로 잘라 보내지만 여기서도 자른다 —
+     비용이 걸린 제한(사진 1장 = 과금 1건)을 한 곳에서만 지키면
+     그 한 곳이 뚫렸을 때 아무도 못 막는다 (CLAUDE.md ⑪).
+     ------------------------------------------------------------ */
+  var MAX_PHOTOS = 3;
+
+  function photoItem(photo, index) {
+    var li = el('li', 'review-photos__item');
+
+    var button = el('button', 'review-photos__button');
+    button.type = 'button';
+    button.setAttribute('data-action', 'open-photo');
+    button.setAttribute('data-photo-index', String(index));
+    button.setAttribute('aria-label', '가게 사진 ' + (index + 1) + ' 크게 보기');
+
+    var img = el('img', 'review-photos__img');
+    img.alt = '가게 사진 ' + (index + 1);
+    img.loading = 'lazy';
+    img.decoding = 'async';
+
+    function markLoaded() { img.classList.add('is-loaded'); }
+
+    /* 한 장이 깨지면 그 칸만 지운다. 회색 자리만 남겨두지 않는다.
+       마지막 한 장이 깨지면 목록이 비므로 <ul>째 걷어낸다. */
+    function drop() {
+      var list = li.parentNode;
+      li.remove();
+      if (list && !list.children.length) list.remove();
+    }
+
+    /* **리스너를 src보다 먼저 건다.** 브라우저 캐시에 이미 있는 사진은
+       src를 넣는 순간 로드가 끝나 버려, 뒤늦게 건 리스너는 영영 호출되지 않는다.
+       그러면 .is-loaded가 안 붙어 회색 타일이 계속 남는다 —
+       에러가 아니라 그럴듯한 실패이고, **같은 가게를 두 번째 열 때만** 재현된다. */
+    img.addEventListener('load', markLoaded);
+    img.addEventListener('error', drop);
+    img.src = photo.url;
+
+    // 그래도 사이를 빠져나가는 경우가 있어 한 번 더 확인한다. 두 경로를 모두 덮는다.
+    if (img.complete && img.naturalWidth > 0) markLoaded();
+
+    button.appendChild(img);
+    li.appendChild(button);
+    return li;
+  }
+
+  function photoStrip(place) {
+    var photos = [];
+    var raw = place.photos || [];   // 앞 버전 캐시에는 photos가 아예 없다
+    for (var i = 0; i < raw.length && photos.length < MAX_PHOTOS; i += 1) {
+      if (raw[i] && typeof raw[i].url === 'string' && raw[i].url) photos.push(raw[i]);
+    }
+
+    panelPhotos = photos;
+
+    // **사진이 없으면 목록을 아예 만들지 않는다.** 빈 <ul>을 두고 CSS로 숨기지 않는다.
+    if (!photos.length) return;
+
+    var list = el('ul', 'review-photos plain-list');
+    list.setAttribute('aria-label', '가게 사진');
+    for (var j = 0; j < photos.length; j += 1) {
+      list.appendChild(photoItem(photos[j], j));
+    }
+    panelBody.appendChild(list);
+  }
+
+  /* --- 사진 크게 보기 (UI-CONTRACT 「.photo-viewer」) --------------
+     리뷰 패널이 떠 있는 채로 그 위에 겹쳐 뜬다. 닫아도 리뷰 패널은 남는다.
+     ------------------------------------------------------------ */
+
+  function openPhoto(index, opener) {
+    var photo = panelPhotos[index];
+    if (!photo) return;
+
+    photoOpener = opener || null;
+    photoViewerImg.src = photo.url;
+    photoViewerImg.alt = '가게 사진 ' + (index + 1);
+
+    // 제공자 표기는 구글 정책상 필요하다. 없으면 요소째 접는다.
+    photoViewerCaption.textContent = photo.attribution || '';
+    photoViewerCaption.hidden = !photo.attribution;
+
+    if (typeof photoViewer.showModal === 'function') {
+      if (!photoViewer.open) photoViewer.showModal();
+    } else {
+      photoViewer.setAttribute('open', '');
+    }
+  }
+
+  function closePhoto() {
+    if (typeof photoViewer.close === 'function' && photoViewer.open) {
+      photoViewer.close();
+    } else {
+      photoViewer.removeAttribute('open');
+      restorePhotoFocus();
+    }
+  }
+
+  function restorePhotoFocus() {
+    /* 눌렀던 썸네일로 돌아간다. 리뷰 패널은 여전히 열려 있으므로
+       panelOpener(검색 결과 카드의 버튼)로 돌아가면 안 된다 — 그쪽은 지금 비활성이다. */
+    if (photoOpener && document.contains(photoOpener)) photoOpener.focus();
+    photoOpener = null;
+    /* src를 비워 다음에 열 때 앞 사진이 잠깐 스치지 않게 한다.
+       빈 문자열은 브라우저에 따라 현재 페이지를 다시 받으므로 쓰지 않는다. */
+    photoViewerImg.removeAttribute('src');
   }
 
   function ratingRow(place) {
@@ -352,6 +477,9 @@
 
   function renderReviewPlace(place, kakaoPlace) {
     clearPanelBody();
+    /* 사진이 맨 위다 — 가게 이름(.review-panel__head) 바로 아래이자 별점 위.
+       리뷰가 0개인 가게에도 사진은 그대로 나온다. 가게를 찾은 것은 맞기 때문이다. */
+    photoStrip(place);
     ratingRow(place);
 
     var reviews = place.reviews || [];
@@ -913,6 +1041,14 @@
       closeReviews();
       return;
     }
+
+    /* 사진 썸네일. 닫기 판정보다 뒤, 배경 판정보다 앞이다 —
+       배경 판정(event.target === panel)에 걸릴 일은 없지만 순서를 눈에 보이게 둔다. */
+    var photoButton = event.target.closest('[data-action="open-photo"]');
+    if (photoButton) {
+      openPhoto(Number(photoButton.getAttribute('data-photo-index')), photoButton);
+      return;
+    }
     /* 배경(::backdrop)을 눌렀을 때다.
        <dialog>는 배경도 자기 자신이 받으므로 target이 패널 그 자체면 바깥을 누른 것이다.
        내용은 .review-panel__inner가 덮고 있어 여기까지 오지 않는다. */
@@ -923,8 +1059,29 @@
      포커스 되돌리기를 여기 두어야 세 경로(닫기 버튼·배경·Esc)가 모두 지나간다. */
   panel.addEventListener('close', function () {
     reviewSeq += 1;
+    /* 리뷰 패널이 닫히면 그 위의 사진 창도 함께 닫는다.
+       Esc 한 번으로는 맨 위(사진)만 닫히므로 여기까지 오면 사진은 이미 닫혀 있다.
+       하지만 배경 클릭·닫기 버튼으로 리뷰 패널을 닫는 길이 있어 이 줄이 필요하다 —
+       없으면 리뷰 패널만 사라지고 사진 창이 홀로 떠 있게 된다. */
+    if (photoViewer.open) closePhoto();
     restoreFocus();
   });
+
+  photoViewer.addEventListener('click', function (event) {
+    if (event.target.closest('[data-action="close-photo"]')) {
+      closePhoto();
+      return;
+    }
+    /* 배경을 눌렀을 때다. .review-panel과 같은 판정 —
+       <dialog>는 배경도 자기 자신이 받으므로 target이 창 그 자체면 바깥을 누른 것이다.
+       사진 자체(.photo-viewer__inner)를 누르면 여기까지 오지 않는다. */
+    if (event.target === photoViewer) closePhoto();
+  });
+
+  /* Esc로 닫을 때는 위 핸들러를 타지 않고 브라우저가 바로 close를 쏜다.
+     포커스 되돌리기를 여기 두어야 세 경로(닫기 버튼·배경·Esc)가 모두 지나간다.
+     <dialog>가 둘 겹쳐 있어도 **Esc는 맨 위 하나만** 닫으므로 리뷰 패널은 남는다. */
+  photoViewer.addEventListener('close', restorePhotoFocus);
 
   savedList.addEventListener('click', function (event) {
     var button = event.target.closest('[data-action="remove"]');

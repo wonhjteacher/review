@@ -16,10 +16,11 @@ const GOOGLE_TIMEOUT = 6000; // ms — 검색(5s)보다 조금 넉넉하다. 리
 
 /**
  * 요청 필드가 늘어나면 과금 등급이 함께 올라간다 (Places API는 FieldMask 단위 과금이다).
- * **이 5개에서 늘리지 않는다.** searchText는 응답이 `places[]`이므로 `places.` 접두사가 필요하다.
+ * **이 6개에서 늘리지 않는다.** searchText는 응답이 `places[]`이므로 `places.` 접두사가 필요하다.
  *
- * 지금 등급을 올리는 필드는 `reviews` 하나다. 나머지 넷은 낮은 등급이므로
- * 리뷰를 빼면 요금이 내려간다 — 리뷰가 이 기능의 목적이라 지금은 감수한다.
+ * 등급은 요청 필드 중 **가장 높은 것 하나**로 정해진다. 지금 그것은 `reviews`(Enterprise)이고
+ * `photos`는 그 아래(Pro)라서 얹어도 검색 요금이 오르지 않는다.
+ * **`reviews`를 빼는 날 이 전제가 뒤집힌다** — 그때는 photos가 등급을 떠받친다.
  */
 const FIELD_MASK = [
   "places.displayName",
@@ -27,7 +28,19 @@ const FIELD_MASK = [
   "places.userRatingCount",
   "places.reviews",
   "places.googleMapsUri",
+  "places.photos",
 ].join(",");
+
+/**
+ * 사진은 검색과 **별개의 SKU**이고 1장당 1건으로 매겨진다 (무료 월 1만 장).
+ * **가게당 3장을 넘기지 않는다.** 화면(save.js)도 같은 수로 한 번 더 자른다 —
+ * 비용이 걸린 제한을 한 곳에서만 지키면 그 한 곳이 뚫렸을 때 아무도 못 막는다.
+ */
+const MAX_PHOTOS = 3;
+const PHOTO_MAX_WIDTH = 800;   // 원본은 4800px까지 온다. 화면에 그만한 것이 필요 없다
+/* 3장을 **동시에** 부르므로 이 값이 그대로 사진 단계의 상한이다.
+   검색 6s + 사진 4s = 최악 10s. vercel.json이 이 함수에 20s를 잡아두는 근거다. */
+const PHOTO_TIMEOUT = 4000;
 
 /**
  * 오매칭 방지. 이름이 같은 가게가 전국에 있으므로 카카오 좌표 반경 안으로 가둔다.
@@ -132,7 +145,7 @@ function shapeReview(review) {
   };
 }
 
-function shapePlace(place) {
+function shapePlace(place, photos) {
   const reviews = Array.isArray(place.reviews)
     ? place.reviews.map(shapeReview).filter(Boolean)
     : [];
@@ -142,7 +155,94 @@ function shapePlace(place) {
     user_rating_count: typeof place.userRatingCount === "number" ? place.userRatingCount : 0,
     google_maps_uri: typeof place.googleMapsUri === "string" ? place.googleMapsUri : "",
     reviews,
+    // **항상 배열이다. 사진이 없어도 null이 아니다** — 화면 쪽 분기를 하나로 유지한다.
+    photos: Array.isArray(photos) ? photos : [],
   };
+}
+
+/* --- 사진 -------------------------------------------------------------
+   구글이 주는 것은 이미지가 아니라 이름(`places/{id}/photos/{ref}`)이다.
+   실물 주소로 바꾸려면 키가 필요한데, **그 키를 화면에 내려보내면 안 된다** (CLAUDE.md ⑩·⑪).
+   그래서 서버가 대신 바꿔서 **키 없이 열리는 주소만** 내보낸다.
+   -------------------------------------------------------------------- */
+
+/**
+ * `skipHttpRedirect=true`가 이 기능의 핵심이다.
+ * 붙이지 않으면 구글은 이미지 바이트로 302 리다이렉트하므로, 화면에 주소를 주려면
+ * **키가 박힌 URL을 그대로 내려보내야 한다.** 붙이면 대신 photoUri가 JSON으로 온다.
+ * 실측: `200 { name, photoUri }`, photoUri는 lh3.googleusercontent.com이고 키가 없다.
+ */
+const PHOTO_MEDIA_BASE = "https://places.googleapis.com/v1/";
+
+/**
+ * 사진 이름은 URL 경로에 그대로 들어간다. 남이 준 문자열이므로 모양을 먼저 확인한다.
+ * `/`가 살아 있어야 해서 encodeURIComponent로 감쌀 수 없다 — 대신 허용 문자만 통과시킨다.
+ * 실측한 이름은 `places/ChIJ…/photos/AVoNoXQ…` 꼴로 영숫자·`-`·`_`뿐이다.
+ */
+const PHOTO_NAME_RE = /^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/;
+
+/** 구글 정책상 사진에는 제공자 표기가 따라붙어야 한다. 없으면 빈 문자열. */
+function photoAttribution(photo) {
+  const list = Array.isArray(photo.authorAttributions) ? photo.authorAttributions : [];
+  const first = list.find((a) => a && typeof a === "object");
+  return first ? textOf(first.displayName) : "";
+}
+
+async function resolvePhoto(photo, apiKey, signal) {
+  const name = typeof photo.name === "string" ? photo.name : "";
+  if (!PHOTO_NAME_RE.test(name)) return null;
+
+  const url = `${PHOTO_MEDIA_BASE}${name}/media` +
+    `?maxWidthPx=${PHOTO_MAX_WIDTH}&skipHttpRedirect=true`;
+
+  // 키는 헤더로 보낸다. URL에 ?key= 를 붙이는 구버전으로 돌아가지 않는다 (⑪).
+  const response = await fetch(url, {
+    headers: { "X-Goog-Api-Key": apiKey, Accept: "application/json" },
+    signal,
+  });
+  if (!response.ok) {
+    console.error("google photo HTTP", response.status);
+    return null;
+  }
+
+  const body = await response.json();
+  const uri = typeof body.photoUri === "string" ? body.photoUri : "";
+  if (!uri) return null;
+
+  /* **내보내기 직전 마지막 확인이다.** 지금 구글이 주는 주소에는 키가 없지만,
+     이 검사가 없으면 응답 모양이 바뀐 날 키가 조용히 화면으로 새어나간다.
+     새는 것보다 사진 한 장을 잃는 편이 낫다. */
+  if (uri.indexOf(apiKey) >= 0) {
+    console.error("photoUri에 API 키가 섞여 있어 버림");
+    return null;
+  }
+
+  return { url: uri, attribution: photoAttribution(photo) };
+}
+
+/**
+ * 최대 3장을 **동시에** 해석한다. 차례로 하면 지연이 3배가 되어 함수 상한에 닿는다.
+ * **어떤 실패도 리뷰를 막지 않는다** — 실패하면 빈 배열이고 리뷰는 그대로 200으로 나간다.
+ */
+async function resolvePhotos(place, apiKey) {
+  const raw = Array.isArray(place.photos) ? place.photos : [];
+  const picked = raw.filter((p) => p && typeof p === "object").slice(0, MAX_PHOTOS);
+  if (!picked.length) return [];
+
+  // 세 장이 타이머 하나를 나눠 쓴다. 끊기면 셋 다 reject되고 아래에서 null로 접힌다.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PHOTO_TIMEOUT);
+  try {
+    const settled = await Promise.all(
+      picked.map((p) => resolvePhoto(p, apiKey, controller.signal).catch(() => null))
+    );
+    return settled.filter(Boolean);
+  } catch (err) {
+    console.error("사진 해석 실패:", err && err.message);
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 module.exports = async function handler(req, res) {
@@ -232,5 +332,9 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 404, errorBody("not_found", "구글 리뷰를 찾지 못했어요"));
   }
 
-  return sendJson(res, 200, { ok: true, place: shapePlace(place) });
+  /* 사진 해석은 여기서만 왕복을 한 번 더 한다.
+     **실패해도 리뷰는 나간다** — resolvePhotos가 어떤 경우에도 배열을 돌려주기 때문이다. */
+  const photos = await resolvePhotos(place, apiKey);
+
+  return sendJson(res, 200, { ok: true, place: shapePlace(place, photos) });
 };

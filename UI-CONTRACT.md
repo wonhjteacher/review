@@ -148,8 +148,9 @@
 <p class="review-panel__status review-panel__status--loading">리뷰를 불러오는 중이에요</p>
 ```
 
-**② 리뷰 있음**
+**② 리뷰 있음** — 사진이 있으면 별점 **위**에 먼저 온다 (「.review-photos」 참고)
 ```html
+<ul class="review-photos plain-list" aria-label="가게 사진"><!-- 사진 없으면 이 줄이 통째로 없다 --></ul>
 <p class="review-panel__rating">
   <span class="review-panel__star" aria-hidden="true">★</span>
   <span class="review-panel__score">4.3</span>
@@ -190,6 +191,74 @@
 ```css
 .review-panel:not([open]) { display: none; }
 ```
+
+---
+
+## `.review-photos` — 가게 사진 줄 (`.review-panel__body` 안, **맨 위**)
+
+가게 이름(`.review-panel__head`) 바로 아래이자 별점(`.review-panel__rating`) **위**다.
+가로로 나란히 서고 모바일에서는 스와이프로 넘긴다.
+
+```html
+<ul class="review-photos plain-list" aria-label="가게 사진">
+  <li class="review-photos__item">
+    <button type="button" class="review-photos__button" data-action="open-photo" data-photo-index="0">
+      <img class="review-photos__img" src="{photos[].url}" alt="가게 사진 1"
+           loading="lazy" decoding="async">
+    </button>
+  </li>
+</ul>
+```
+
+**사진이 없으면 `<ul>`을 통째로 만들지 않는다.** 빈 목록을 두고 CSS로 숨기지 않는다 —
+`.analysis`를 리뷰 0개일 때 만들지 않는 것과 같은 규칙이다.
+
+**최대 3장이다.** 서버가 이미 3장으로 잘라 보내지만 화면 쪽에서도 자른다.
+비용이 걸린 제한은 한 곳에서만 지키면 그 한 곳이 뚫렸을 때 아무도 못 막는다.
+
+**회색 자리(스켈레톤)는 `<li>`가 갖는다.** 배경색을 깔아둔 고정 크기 타일 안에서
+`<img>`가 `opacity: 0`으로 시작해 `.is-loaded`가 붙으면 드러난다. 타일 크기가 고정이라
+사진 비율과 무관하게 **레이아웃이 흔들리지 않는다.**
+
+> **`load` 리스너를 `src`보다 **먼저** 건다.** 브라우저 캐시에 이미 있는 사진은
+> `src`를 넣는 순간 로드가 끝나 버려, 뒤늦게 건 리스너는 **영영 호출되지 않는다.**
+> 그러면 `.is-loaded`가 안 붙어 회색 타일이 계속 남는다 — 에러가 아니라 그럴듯한 실패다.
+> 같은 가게를 두 번째 열 때만 재현되므로 처음 한 번만 보면 드러나지 않는다.
+> `src`를 넣은 뒤 `img.complete`도 함께 확인해 두 경로를 모두 덮는다.
+
+한 장이 깨지면 그 `<li>`만 지운다. 전부 깨지면 `<ul>`째 지운다 — 회색 칸만 남겨두지 않는다.
+
+---
+
+## `.photo-viewer` — 사진 크게 보기 (`<body>` 직속, `.review-panel` 뒤)
+
+`.review-panel`과 **같은 이유로 `<dialog>`다.** 리뷰 패널이 떠 있는 채로 그 위에 겹쳐 뜬다 —
+`<dialog>` 둘을 겹쳐 `showModal()` 하면 나중 것이 top layer 위에 쌓이고,
+**Esc는 맨 위 것 하나만 닫는다.** 직접 만든 오버레이로는 이 동작을 공짜로 얻지 못한다.
+
+```html
+<dialog class="photo-viewer" id="photo-viewer" aria-label="사진 크게 보기">
+  <div class="photo-viewer__inner">
+    <button type="button" class="photo-viewer__close" data-action="close-photo"
+            aria-label="사진 닫기">닫기</button>
+    <img class="photo-viewer__img" id="photo-viewer-img" alt="가게 사진">
+    <p class="photo-viewer__caption" id="photo-viewer-caption"><!-- 제공자 표기 --></p>
+  </div>
+</dialog>
+```
+
+**`.review-panel`과 똑같은 `display` 함정이 있다.** 이 한 줄을 지우지 않는다:
+
+```css
+.photo-viewer:not([open]) { display: none; }
+```
+
+**닫으면 리뷰 패널로 돌아간다.** 사진 창을 닫는 것이 리뷰 패널까지 닫으면 안 된다 —
+포커스는 눌렀던 `.review-photos__button`으로 되돌린다.
+
+`.photo-viewer__caption`은 **구글 정책상 필요한 제공자 표기**다.
+Places 사진을 표시하는 화면은 `authorAttributions`를 함께 보여야 한다.
+표기가 비어 있으면 요소째 뺀다.
 
 ---
 
@@ -365,7 +434,9 @@
     "user_rating_count": 128,          // 없으면 0
     "google_maps_uri": "https://…",    // 없으면 ""
     "reviews": [ { "author": "…", "rating": 5,
-                   "text": "…", "relative_time": "3개월 전" } ]
+                   "text": "…", "relative_time": "3개월 전" } ],
+    "photos":  [ { "url": "https://lh3.googleusercontent.com/place-photos/…",
+                   "attribution": "육아조무사TV" } ]   // 없으면 [] — **null이 아니다**
   } }
 // 실패 — /api/search와 완전히 같은 모양
 { "ok": false, "error": { "code": "not_found", "message": "구글 리뷰를 찾지 못했어요" } }
@@ -402,15 +473,53 @@
 **틀린 가게의 리뷰를 보여주느니 못 찾았다고 말하는 편이 낫다**는 판단이다.
 못 찾는 가게가 잦으면 `SEARCH_RADIUS_M` **하나만** 키운다 (두 구현 모두).
 
-**FieldMask는 아래 5개로 고정이다. 늘리지 않는다** — 요청 필드가 늘면 과금 등급이 올라간다.
+**FieldMask는 아래 6개로 고정이다. 늘리지 않는다** — 요청 필드가 늘면 과금 등급이 올라간다.
 ```
-places.displayName,places.rating,places.userRatingCount,places.reviews,places.googleMapsUri
+places.displayName,places.rating,places.userRatingCount,places.reviews,places.googleMapsUri,places.photos
 ```
+
+`places.photos`를 더해도 **검색 호출 요금은 오르지 않는다.** 등급은 요청한 필드 중
+**가장 높은 것 하나**로 정해지는데, `places.reviews`가 이미 최상위(Enterprise) 등급이고
+`places.photos`는 그보다 아래(Pro)이기 때문이다.
+→ **거꾸로 `places.reviews`를 빼는 날에는 사진이 등급을 떠받치게 된다.** 그때 요금을 다시 본다.
+
+### 사진 주소는 **서버가** 키 없는 주소로 바꿔서 내려보낸다
+
+사진 실물을 받는 것은 검색과 **별개의 SKU**이고 **1장당 1건**으로 매겨진다(무료 월 1만 장).
+그래서 **가게당 3장을 넘기지 않는다.** 서버가 자르고 화면도 자른다.
+
+```
+GET https://places.googleapis.com/v1/{photos[].name}/media
+      ?maxWidthPx=800&skipHttpRedirect=true
+헤더: X-Goog-Api-Key: {GOOGLE_PLACES_KEY}
+→ 200 { "name": "…", "photoUri": "https://lh3.googleusercontent.com/place-photos/…" }
+```
+
+**`skipHttpRedirect=true`가 이 기능의 핵심이다.** 이것이 없으면 구글은 이미지 바이트로
+302 리다이렉트하므로, 화면에 주소를 주려면 **키가 박힌 URL을 그대로 내려보내야 한다.**
+붙이면 대신 `photoUri`가 JSON으로 오는데, 이 주소에는 **키가 없고 키 없이 그대로 열린다**
+(실측: `200 image/jpeg`, `800×534`, 호스트 `lh3.googleusercontent.com`, `key=` 없음).
+
+**키가 URL에 들어가는 구버전 `?key=`를 쓰지 않는다.** 헤더로 보낸다 — 위쪽 「신버전 방식」 그대로다.
+
+**두 구현 모두 내보내기 직전에 한 번 더 확인한다** — 돌려받은 `photoUri`에 우리 키 문자열이
+섞여 있으면 그 사진을 **버린다.** 지금은 섞이지 않지만, 이 규칙이 코드에 없으면
+구글이 응답 모양을 바꾼 날 **키가 조용히 화면으로 새어나간다.**
+
+**사진은 리뷰를 막지 못한다.** 사진 해석이 실패하거나 느리면 `photos: []`로 두고
+리뷰는 그대로 200으로 내보낸다. 사진 때문에 리뷰가 안 보이는 일은 없어야 한다.
+3장은 **동시에** 해석한다 — 차례로 하면 지연이 3배가 되어 함수 상한에 닿는다.
 
 **캐시** — 구글 리뷰는 월 1,000건까지만 무료다.
 한 번 조회한 가게는 `sessionStorage`에 넣고, 같은 카카오 `id`를 다시 열면 **네트워크를 타지 않는다.**
 캐시 담당은 `review-cache.js`(`window.ReviewCache`) 하나뿐이다 — `save.js`가 직접 `sessionStorage`를 만지지 않는다.
 **실패 응답도 캐시한다.** 못 찾는 가게를 연타하면 못 찾는 호출로 무료 한도가 닳는다.
+
+사진 주소는 봉투 안에 함께 들어 있으므로 **캐시가 사진까지 같이 기억한다.**
+같은 가게를 다시 열면 검색도 사진 해석도 나가지 않는다.
+→ 그래서 **봉투 모양이 바뀌면 캐시 키의 버전을 올린다**(`…:reviews:v2`).
+올리지 않으면 앞 버전에서 담긴 `photos` 없는 봉투가 그 탭에서 계속 쓰여,
+**배포는 됐는데 사진이 안 나오는** 상태가 탭을 닫을 때까지 이어진다.
 
 ---
 
@@ -523,11 +632,13 @@ Content-Type: application/json
 <div class="site-auth" id="site-auth"></div>
 ```
 
-`auth.js`가 그리는 모양이다. **①~③ 중 하나만 화면에 있고, 그 앞에 마이페이지 링크가 붙는다.**
+`auth.js`가 그리는 모양이다. **①~③ 중 하나만 화면에 있고, 그 앞에 ⓪ 이동 링크 하나가 붙는다.**
 
 ```html
-<!-- ⓪ 마이페이지 — ①·②와 **함께** 나온다. ③(모듈 실패)일 때는 나오지 않는다 -->
-<a class="site-auth__mypage" href="mypage.html">마이페이지</a>
+<!-- ⓪ 이동 링크 — ①·②와 **함께** 나온다. ③(모듈 실패)일 때는 나오지 않는다.
+     지금 보고 있는 페이지에 따라 **둘 중 하나만** 나온다 -->
+<a class="site-auth__mypage" href="mypage.html">맛집주머니</a>   <!-- 맛집주머니가 아닌 곳에서 -->
+<a class="site-auth__home"   href="index.html">홈</a>            <!-- 맛집주머니에서 -->
 
 <!-- ① 로그아웃 상태 -->
 <button type="button" class="site-auth__button" data-action="open-auth">로그인</button>
@@ -540,9 +651,18 @@ Content-Type: application/json
 <span class="site-auth__error">로그인 기능을 불러오지 못했어요</span>
 ```
 
-**마이페이지 링크는 로그인 여부와 무관하게 나온다.** 비로그인으로 들어가도 그 페이지가
+**맛집주머니 링크는 로그인 여부와 무관하게 나온다.** 비로그인으로 들어가도 그 페이지가
 「로그인하면 담은 맛집을 볼 수 있어요」로 받아주므로, 숨기면 들어갈 길만 사라진다.
-**단 마이페이지 자신에서는 빼둔다** — `auth.js`가 `<body data-page="mypage">`를 보고 판단한다.
+**단 맛집주머니 자신에서는 빼둔다** — `auth.js`가 `<body data-page="mypage">`를 보고 판단한다.
+지금 보고 있는 곳으로 가는 링크는 소음이다.
+
+**그 자리를 홈 링크가 대신 채운다.** `mypage.html`의 뒤로가기는 `save.html`을 가리키므로,
+이것이 없으면 맛집주머니에서 홈까지 두 번을 거쳐야 한다. **알약 개수는 세 페이지 모두 그대로다** —
+둘 중 하나만 나오므로 좁은 화면에서 `.site-auth`가 길어지지 않는다.
+
+`index.html`은 홈이 자기 자신이라 두 링크 중 하나도 여기 두지 않아도 될 것 같지만,
+**맛집주머니 링크는 필요하다.** 홈 쪽만 빠지고 맛집주머니가 남는 것은 위 규칙 그대로다.
+`index.html` 안에서 맨 위로 가는 길은 `.site-nav`의 「홈」 알약이 맡는다.
 
 **세션 복원이 끝나기 전에는 아무것도 그리지 않는다.** `localStorage`에서 세션을 되살리는 데
 한 틱이 걸리는데, 그동안 `로그인`을 그려두면 **로그인한 사용자에게 로그인 버튼이 깜빡인다.**

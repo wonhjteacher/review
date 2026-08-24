@@ -137,12 +137,21 @@ window.Auth = (function () {
       return;
     }
 
-    /* 마이페이지는 로그인 여부와 상관없이 낸다. 비로그인으로 들어가도
+    /* 맛집주머니는 로그인 여부와 상관없이 낸다. 비로그인으로 들어가도
        그 페이지가 「로그인하면 담은 맛집을 볼 수 있어요」로 받아주므로,
        숨기면 들어갈 길만 사라지고 얻는 것이 없다.
-       자기 페이지에서는 빼둔다 — 지금 보고 있는 곳으로 가는 링크는 소음이다. */
-    if (document.body && document.body.getAttribute('data-page') !== 'mypage') {
-      var mypage = el('a', 'site-auth__mypage', '마이페이지');
+       자기 페이지에서는 빼둔다 — 지금 보고 있는 곳으로 가는 링크는 소음이다.
+
+       그 자리를 홈 링크가 대신 채운다. mypage.html의 뒤로가기는 save.html을
+       가리키므로, 이것이 없으면 맛집주머니에서 홈까지 두 번을 거쳐야 한다.
+       **둘 중 하나만** 나오므로 좁은 화면에서 .site-auth가 길어지지 않는다
+       (알약이 늘면 site-nav 브랜드 글자와 겹친다 — style.css .site-nav__brand 참고). */
+    if (document.body && document.body.getAttribute('data-page') === 'mypage') {
+      var home = el('a', 'site-auth__home', '홈');
+      home.href = 'index.html';
+      slot.appendChild(home);
+    } else {
+      var mypage = el('a', 'site-auth__mypage', '맛집주머니');
       mypage.href = 'mypage.html';
       slot.appendChild(mypage);
     }

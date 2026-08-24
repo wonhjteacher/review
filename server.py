@@ -39,6 +39,9 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+# 사진 3장을 동시에 해석하기 위한 것이다. 차례로 하면 지연이 3배가 된다.
+# 표준 라이브러리라 `pip install` 금지 규칙에 걸리지 않는다.
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -52,7 +55,11 @@ GOOGLE_ENDPOINT = "https://places.googleapis.com/v1/places:searchText"
 GOOGLE_TIMEOUT = 6  # 초 — 검색보다 조금 넉넉하다. 리뷰 본문까지 실려 온다
 
 # 요청 필드가 늘어나면 과금 등급이 함께 올라간다 (Places API는 FieldMask 단위 과금이다).
-# **이 5개에서 늘리지 않는다.** searchText는 응답이 places[]이므로 `places.` 접두사가 필요하다.
+# **이 6개에서 늘리지 않는다.** searchText는 응답이 places[]이므로 `places.` 접두사가 필요하다.
+#
+# 등급은 요청 필드 중 **가장 높은 것 하나**로 정해진다. 지금 그것은 reviews(Enterprise)이고
+# photos는 그 아래(Pro)라서 얹어도 검색 요금이 오르지 않는다.
+# **reviews를 빼는 날 이 전제가 뒤집힌다** — 그때는 photos가 등급을 떠받친다.
 GOOGLE_FIELD_MASK = ",".join(
     (
         "places.displayName",
@@ -60,8 +67,23 @@ GOOGLE_FIELD_MASK = ",".join(
         "places.userRatingCount",
         "places.reviews",
         "places.googleMapsUri",
+        "places.photos",
     )
 )
+
+# 사진은 검색과 **별개의 SKU**이고 1장당 1건으로 매겨진다 (무료 월 1만 장).
+# **가게당 3장을 넘기지 않는다.** 화면(save.js)도 같은 수로 한 번 더 자른다 —
+# 비용이 걸린 제한을 한 곳에서만 지키면 그 한 곳이 뚫렸을 때 아무도 못 막는다.
+MAX_PHOTOS = 3
+PHOTO_MAX_WIDTH = 800  # 원본은 4800px까지 온다. 화면에 그만한 것이 필요 없다
+PHOTO_TIMEOUT = 4  # 초 — 3장을 동시에 부르므로 이 값이 그대로 사진 단계의 상한이다
+
+PHOTO_MEDIA_BASE = "https://places.googleapis.com/v1/"
+
+# 사진 이름은 URL 경로에 그대로 들어간다. 남이 준 문자열이므로 모양을 먼저 확인한다.
+# `/`가 살아 있어야 해서 quote()로 감쌀 수 없다 — 대신 허용 문자만 통과시킨다.
+# 실측한 이름은 `places/ChIJ…/photos/AVoNoXQ…` 꼴로 영숫자·`-`·`_`뿐이다.
+PHOTO_NAME_RE = re.compile(r"^places/[A-Za-z0-9_-]+/photos/[A-Za-z0-9_-]+$")
 
 # 오매칭 방지. 이름이 같은 가게가 전국에 있으므로 카카오 좌표 반경 안으로 가둔다.
 #
@@ -489,7 +511,87 @@ class AppHandler(SimpleHTTPRequestHandler):
         if place is None:
             return 404, error_body("not_found", "구글 리뷰를 찾지 못했어요")
 
-        return 200, {"ok": True, "place": shape_place(place)}
+        # 사진 해석은 여기서만 왕복을 한 번 더 한다.
+        # **실패해도 리뷰는 나간다** — resolve_photos가 어떤 경우에도 리스트를 돌려준다.
+        photos = self.resolve_photos(api_key, place)
+
+        return 200, {"ok": True, "place": shape_place(place, photos)}
+
+    # --- 사진 -------------------------------------------------------
+    #
+    # 구글이 주는 것은 이미지가 아니라 이름(`places/{id}/photos/{ref}`)이다.
+    # 실물 주소로 바꾸려면 키가 필요한데, **그 키를 화면에 내려보내면 안 된다** (CLAUDE.md ⑩·⑪).
+    # 그래서 서버가 대신 바꿔서 **키 없이 열리는 주소만** 내보낸다.
+
+    def resolve_photos(self, api_key, place):
+        """최대 3장을 **동시에** 해석한다. 어떤 실패도 리뷰를 막지 않는다."""
+        raw = place.get("photos")
+        if not isinstance(raw, list):
+            return []
+        picked = [p for p in raw if isinstance(p, dict)][:MAX_PHOTOS]
+        if not picked:
+            return []
+
+        # 차례로 하면 지연이 3배가 된다. 장수가 3으로 묶여 있어 워커도 그만큼만 만든다.
+        try:
+            with ThreadPoolExecutor(max_workers=len(picked)) as pool:
+                results = list(pool.map(lambda p: self.resolve_photo(api_key, p), picked))
+        except OSError as exc:
+            # 스레드를 못 만드는 환경. 사진을 포기하고 리뷰는 그대로 내보낸다.
+            self.log_message("사진 해석 실패 %s", exc)
+            return []
+
+        return [item for item in results if item]
+
+    def resolve_photo(self, api_key, photo):
+        """사진 하나를 키 없는 주소로 바꾼다. 실패하면 None."""
+        name = photo.get("name")
+        if not isinstance(name, str) or not PHOTO_NAME_RE.match(name):
+            return None
+
+        url = (
+            PHOTO_MEDIA_BASE
+            + name
+            + "/media?maxWidthPx="
+            + str(PHOTO_MAX_WIDTH)
+            # **skipHttpRedirect가 이 기능의 핵심이다.** 빼면 구글이 이미지 바이트로
+            # 302를 쏘므로, 화면에 주소를 주려면 키가 박힌 URL을 내려보내야 한다.
+            + "&skipHttpRedirect=true"
+        )
+
+        request = urllib.request.Request(
+            url,
+            # 키는 헤더로 보낸다. URL에 ?key= 를 붙이는 구버전으로 돌아가지 않는다 (⑪).
+            headers={"X-Goog-Api-Key": api_key, "Accept": "application/json"},
+            method="GET",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=PHOTO_TIMEOUT, context=SSL_CONTEXT) as response:
+                raw = response.read()
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            # HTTPError도 URLError의 하위라 여기서 함께 잡힌다.
+            self.log_message("google photo 실패 %s", exc)
+            return None
+
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            self.log_message("google photo 응답을 JSON으로 읽지 못함")
+            return None
+
+        uri = body.get("photoUri")
+        if not isinstance(uri, str) or not uri:
+            return None
+
+        # **내보내기 직전 마지막 확인이다.** 지금 구글이 주는 주소에는 키가 없지만,
+        # 이 검사가 없으면 응답 모양이 바뀐 날 키가 조용히 화면으로 새어나간다.
+        # 새는 것보다 사진 한 장을 잃는 편이 낫다.
+        if api_key in uri:
+            self.log_message("photoUri에 API 키가 섞여 있어 버림")
+            return None
+
+        return {"url": uri, "attribution": photo_attribution(photo)}
 
     # --- Gemini 리뷰 분석 -------------------------------------------
 
@@ -751,7 +853,7 @@ def shape_review(review):
     }
 
 
-def shape_place(place):
+def shape_place(place, photos=None):
     raw_reviews = place.get("reviews")
     reviews = []
     if isinstance(raw_reviews, list):
@@ -769,7 +871,20 @@ def shape_place(place):
         "user_rating_count": count if isinstance(count, int) and not isinstance(count, bool) else 0,
         "google_maps_uri": uri if isinstance(uri, str) else "",
         "reviews": reviews,
+        # **항상 배열이다. 사진이 없어도 null이 아니다** — 화면 쪽 분기를 하나로 유지한다.
+        "photos": list(photos) if photos else [],
     }
+
+
+def photo_attribution(photo):
+    """구글 정책상 사진에는 제공자 표기가 따라붙어야 한다. 없으면 빈 문자열."""
+    attributions = photo.get("authorAttributions")
+    if not isinstance(attributions, list):
+        return ""
+    for item in attributions:
+        if isinstance(item, dict):
+            return google_text(item.get("displayName"))
+    return ""
 
 
 def google_http_message(status):

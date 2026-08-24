@@ -261,11 +261,33 @@ for (const s of ["visited", "wish"])
 
 ### ⑪ 구글 리뷰의 FieldMask를 늘리지 않는다
 
-Places API (New)는 **요청한 필드에 따라 과금 등급이 올라간다.** 두 구현이 같은 5개로 고정되어 있다:
+Places API (New)는 **요청한 필드에 따라 과금 등급이 올라간다.** 두 구현이 같은 6개로 고정되어 있다:
 
 ```
-places.displayName, places.rating, places.userRatingCount, places.reviews, places.googleMapsUri
+places.displayName, places.rating, places.userRatingCount, places.reviews, places.googleMapsUri, places.photos
 ```
+
+**`places.photos`가 등급을 올리지 않는 이유를 알고 있어야 한다.** 등급은 요청 필드 중
+**가장 높은 것 하나**로 정해진다. `places.reviews`가 이미 최상위(Enterprise)이고
+`photos`는 그 아래(Pro)라서 얹어도 검색 요금이 그대로다.
+→ **`places.reviews`를 빼는 날 이 전제가 뒤집힌다.** 그때는 `photos`가 등급을 떠받치므로
+요금을 다시 계산한다. 「리뷰를 빼면 요금이 내려간다」는 더 이상 그냥 참이 아니다.
+
+**사진 실물은 검색과 별개로 과금된다 — 1장당 1건이다**(무료 월 1만 장).
+그래서 **가게당 3장을 넘기지 않는다.** 두 구현이 서버에서 자르고, `save.js`가 화면에서 또 자른다.
+한 곳에서만 지키면 그 한 곳이 뚫렸을 때 아무도 못 막는다.
+
+**사진 주소는 서버가 키 없는 주소로 바꿔서 내려보낸다.**
+`…/media?maxWidthPx=800&skipHttpRedirect=true`에 키를 **헤더로** 실어 부르면
+`photoUri`(lh3.googleusercontent.com)가 JSON으로 오고, 그 주소에는 키가 없다
+(실측: 키 없이 `200 image/jpeg`, `800×534`).
+`skipHttpRedirect`를 빼면 구글이 이미지로 302를 쏘므로 **키가 박힌 URL을 화면에 줘야 한다** —
+그 순간 ⑩ 위반이다. **두 구현 모두 내보내기 직전에 `photoUri`에 우리 키가 섞였는지 한 번 더 본다.**
+지금은 안 섞이지만, 검사가 없으면 구글이 응답을 바꾼 날 **조용히 새어나간다.**
+
+**사진이 리뷰를 막지 않는다.** 사진 해석이 실패하거나 느리면 `photos: []`로 두고
+리뷰는 그대로 200으로 나간다. 3장은 **동시에** 해석한다 — 차례로 하면 지연이 3배가 되어
+함수 상한(`vercel.json`의 `api/reviews.js` `maxDuration`)에 닿는다.
 
 `languageCode`·`regionCode`는 FieldMask가 아니라 **요청 본문 필드**라 등급에 영향이 없다. 이 둘은 한국어 리뷰를 받기 위한 것이다.
 

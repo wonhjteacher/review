@@ -71,6 +71,21 @@
     </div>
   </dialog>
 
+  <!-- 사진 크게 보기 (UI-CONTRACT 「.photo-viewer」)
+       .review-panel이 떠 있는 채로 그 **위에** 겹쳐 뜬다. <dialog> 둘을 겹쳐
+       showModal()하면 나중 것이 top layer 위에 쌓이고 Esc는 맨 위 것 하나만 닫는다 —
+       사진을 닫아도 리뷰 패널은 그대로 남는다. 직접 만든 오버레이로는 이걸 공짜로 못 얻는다.
+       내용은 save.js가 채운다. -->
+  <dialog class="photo-viewer" id="photo-viewer" aria-label="사진 크게 보기">
+    <div class="photo-viewer__inner">
+      <button type="button" class="photo-viewer__close" data-action="close-photo"
+              aria-label="사진 닫기">닫기</button>
+      <img class="photo-viewer__img" id="photo-viewer-img" alt="가게 사진">
+      <!-- 구글 정책상 필요한 제공자 표기. 비어 있으면 save.js가 hidden으로 접는다. -->
+      <p class="photo-viewer__caption" id="photo-viewer-caption"></p>
+    </div>
+  </dialog>
+
 <!-- 로그인 창 (UI-CONTRACT 「.auth-dialog」)
      <dialog>인 이유는 .review-panel과 같다 — showModal()이 포커스 가둠·Esc 닫기·
      배경 비활성을 브라우저에게서 공짜로 준다. 직접 만든 오버레이로 대체하지 않는다.

@@ -694,6 +694,198 @@ html:has(.review-panel[open]) { overflow: hidden; }
 }
 
 /* ============================================================
+   가게 사진 줄 (UI-CONTRACT 「.review-photos」)
+
+   패널 본문 맨 위 — 가게 이름 아래이자 별점 위다.
+   최대 3장. 모바일에서는 가로로 밀어서 넘긴다.
+
+   그림자를 쓰지 않는다 (DESIGN 10장 — 그림자는 데모 결과 카드 하나에만).
+   사진은 그 자체로 면이라 테두리도 얹지 않고, 대신 회색 자리가 경계를 준다.
+   ============================================================ */
+.review-photos {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+
+  /* 모바일 스와이프. .site-nav__menu와 같은 방식으로 스크롤바를 감춘다 —
+     막대가 보이면 사진 아래에 회색 줄이 하나 더 생긴 것처럼 읽힌다. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  /* 손을 떼면 사진 경계에 맞춰 선다. 반쯤 걸친 사진으로 멈추지 않게. */
+  scroll-snap-type: x mandatory;
+
+  /* 세로 스크롤(.review-panel__body)로 넘어가지 않게 가둔다.
+     끝까지 밀었을 때 패널 본문이 따라 움직이면 사진을 보다가 화면이 튄다. */
+  overscroll-behavior-x: contain;
+
+  /* 본문 좌우 여백까지 사진이 흘러나가 보이도록 음수 마진으로 넓히고
+     같은 크기의 padding으로 첫 장·마지막 장의 시작선을 되돌린다.
+     이렇게 해야 「더 있다」가 잘린 사진으로 드러난다. */
+  margin-left: -20px;
+  margin-right: -20px;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.review-photos::-webkit-scrollbar { display: none; }
+
+@media (min-width: 768px) {
+  /* 태블릿부터는 패널 안쪽 여백이 28px이다 (.review-panel__inner) */
+  .review-photos {
+    margin-left: -28px;
+    margin-right: -28px;
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+}
+
+.review-photos__item {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+/* **회색 자리(스켈레톤)는 이 버튼이 갖는다.**
+   크기가 고정이라 사진 비율과 무관하게 레이아웃이 흔들리지 않는다 —
+   사진이 도착하면서 칸이 커지거나 줄어드는 일이 없다. */
+.review-photos__button {
+  display: block;
+  width: 132px;
+  height: 99px;                     /* 4:3 */
+  padding: 0;
+  overflow: hidden;
+  background: var(--color-surface-alt);
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .review-photos__button { width: 148px; height: 111px; }
+}
+
+/* 로딩 중임을 알리는 옅은 맥박. 도착하면 .is-loaded가 붙어 멎는다. */
+.review-photos__button:has(.review-photos__img:not(.is-loaded)) {
+  animation: review-photo-pulse 1.2s var(--ease) infinite;
+}
+
+.review-photos__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 비율이 제각각인 사진을 같은 칸에 넣는다. 늘리지 않고 잘라서 채운다. */
+  object-fit: cover;
+
+  /* 도착 전에는 투명하다. 회색 자리가 그대로 보인다. */
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease);
+}
+.review-photos__img.is-loaded { opacity: 1; }
+
+@keyframes review-photo-pulse {
+  0%, 100% { background-color: var(--color-surface-alt); }
+  50%      { background-color: var(--color-line); }
+}
+
+/* ============================================================
+   사진 크게 보기 (UI-CONTRACT 「.photo-viewer」)
+
+   .review-panel 위에 겹쳐 뜬다. 닫으면 리뷰 패널로 돌아간다.
+   ============================================================ */
+
+/* .review-panel·.toast와 **똑같은 함정**이다.
+   아래에서 display: flex를 선언하는 순간 브라우저 기본
+   dialog:not([open]) { display: none }을 이겨 창이 처음부터 떠 있게 된다.
+   이 한 줄을 지우지 않는다. */
+.photo-viewer:not([open]) { display: none; }
+
+.photo-viewer {
+  /* dialog의 UA 기본값(가운데 정렬 margin·테두리·padding)을 걷어낸다 */
+  margin: 0;
+  padding: 0;
+  border: 0;
+  max-width: none;
+  max-height: none;
+
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 사진을 보는 창이라 바탕을 두지 않는다. 배경은 ::backdrop이 맡는다. */
+  background: transparent;
+  animation: photo-viewer-in var(--dur-base) var(--ease) both;
+}
+
+/* 리뷰 패널(0.44)보다 진하다. 사진이 주인공인 화면이라 뒤를 더 눌러둔다. */
+.photo-viewer::backdrop {
+  background: rgba(26, 22, 20, 0.82);
+}
+
+.photo-viewer__inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+}
+
+.photo-viewer__img {
+  display: block;
+  /* 창을 넘지 않게 두 축 모두 묶는다. 세로가 긴 사진에서 아래가 잘리지 않게. */
+  max-width: 100%;
+  max-height: calc(100vh - 128px);
+  object-fit: contain;
+  border-radius: var(--radius-md);
+}
+
+@supports (max-height: 100dvh) {
+  .photo-viewer__img { max-height: calc(100dvh - 128px); }
+}
+
+/* 구글 정책상 필요한 제공자 표기. 어두운 배경 위라 밝은 쪽으로 쓴다.
+   토큰(ink-500)은 흰 배경 기준이라 여기서는 대비가 뒤집힌다 (CLAUDE.md ⑥). */
+.photo-viewer__caption {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.photo-viewer__caption[hidden] { display: none; }
+
+/* 사진 위가 아니라 위쪽에 따로 선다 — 사진을 가리지 않기 위해서다.
+   흰 테두리인 이유는 어두운 배경 위이기 때문이다 (--color-line은 흰 배경용이다). */
+.photo-viewer__close {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;                 /* 터치 영역 (DESIGN 9장) */
+  padding: 0 12px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-md);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.photo-viewer__close:hover { border-color: rgba(255, 255, 255, 0.8); }
+
+@keyframes photo-viewer-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ============================================================
    AI 리뷰 분석 (UI-CONTRACT 「.analysis」)
 
    리뷰 목록 뒤, 바깥으로 나가는 링크 앞에 붙는다.
@@ -903,6 +1095,12 @@ html:has(.review-panel[open]) { overflow: hidden; }
   .search__status--loading::after,
   .review-panel__status--loading::after,
   .analysis__status--loading::after { animation: none; opacity: 1; }
+
+  /* 사진 자리의 맥박도 멎는다. 회색 칸은 그대로 남아 「불러오는 중」은 계속 읽힌다 —
+     신호를 없애는 것이 아니라 움직임만 걷어낸다. */
+  .review-photos__button:has(.review-photos__img:not(.is-loaded)) { animation: none; }
+  /* 사진이 나타나는 것도 즉시로 바꾼다. 페이드조차 원치 않는 설정이다. */
+  .review-photos__img { transition: none; }
 
   /* 패널도 transform을 빼고 fade만 남긴다 */
   .review-panel { animation: review-panel-fade-in var(--dur-base) var(--ease) both; }

@@ -1,7 +1,7 @@
 'use strict';
 
 /* ============================================================
-   오늘은 여기 — 마이페이지 (Phase 1)
+   오늘은 여기 — 맛집주머니 (Phase 1, 파일 이름은 mypage로 남아 있다)
 
    담아둔 맛집을 「가볼 곳 / 가본 곳」 두 그룹으로 보여주고,
    방문 기록을 남기고, 지운다.
@@ -48,6 +48,10 @@
   var dialogStatus = document.getElementById('visit-status');
   var dialogSubmit = dialogForm.querySelector('.visit-dialog__submit');
 
+  var removeDialog = document.getElementById('remove-dialog');
+  var removeDialogPlace = document.getElementById('remove-dialog-place');
+  var removeStatus = document.getElementById('remove-status');
+
   /* 입력창이 지금 어느 가게를 다루는지. 닫으면 비운다.
      DOM에서 되읽지 않고 여기에 들고 있는 이유 — 저장이 왕복하는 동안
      목록이 다시 그려져도(다른 탭에서 담기 등) 대상이 흔들리지 않게. */
@@ -58,6 +62,11 @@
   /* 창을 열기 직전에 포커스가 있던 요소. 닫을 때 여기로 되돌린다.
      showModal()은 포커스를 가둬주지만, 닫은 뒤 어디로 돌려놓을지는 정해주지 않는다. */
   var opener = null;
+
+  /* 삭제 확인창이 지금 어느 카드를 다루는지 — editing/opener와 같은 이유로
+     DOM에서 되읽지 않고 여기에 들고 있는다. */
+  var pendingRemove = null;
+  var removeOpener = null;
 
   /* --- 만들기 헬퍼 ---------------------------------------------
      save.js의 el()과 같은 것이다. 두 페이지가 스크립트를 공유하지 않아
@@ -228,6 +237,7 @@
       hideGroups();
       setStatus('');
       closeDialog();
+      closeRemoveDialog();
       notice('로그인하면 담은 맛집을 볼 수 있어요', '로그인', function () {
         if (window.Auth) window.Auth.open('로그인하면 담은 맛집을 볼 수 있어요');
       });
@@ -318,6 +328,77 @@
     for (var i = 0; i < buttons.length; i += 1) buttons[i].disabled = busy;
   }
 
+  /* --- 삭제 확인창 -----------------------------------------------
+     「×」를 눌러도 곧바로 지우지 않는다 — 특히 가본 곳 카드는 방문 기록
+     (visited_at·note·would_return)까지 함께 지워지는데, 되돌릴 방법이 없다.
+     가볼 곳/가본 곳을 가르지 않고 모든 카드에 같은 확인창을 띄운다. */
+
+  function setRemoveStatus(message, isError) {
+    removeStatus.textContent = message || '';
+    removeStatus.className = 'remove-dialog__status' +
+      (message && isError ? ' remove-dialog__status--error' : '');
+  }
+
+  function openRemoveDialog(place, item, button) {
+    pendingRemove = { id: item.dataset.kakaoId, item: item, button: button };
+    removeOpener = button;
+    removeDialogPlace.textContent = place.name;
+    setRemoveStatus('');
+
+    if (!removeDialog.open) removeDialog.showModal();
+
+    // 파괴적 동작이므로 기본 포커스는 「취소」에 둔다.
+    var cancelBtn = removeDialog.querySelector('.remove-dialog__cancel');
+    if (cancelBtn) cancelBtn.focus();
+  }
+
+  function closeRemoveDialog() {
+    if (removeDialog.open) removeDialog.close();
+  }
+
+  removeDialog.addEventListener('click', function (event) {
+    if (event.target.closest('[data-action="close-remove"]')) {
+      closeRemoveDialog();
+      return;
+    }
+
+    var confirmBtn = event.target.closest('[data-action="confirm-remove"]');
+    if (confirmBtn) {
+      if (!pendingRemove || confirmBtn.disabled) return;
+
+      var target = pendingRemove;
+      confirmBtn.disabled = true;
+      target.button.disabled = true;
+      target.item.classList.add('is-busy');
+      setRemoveStatus('지우는 중이에요');
+
+      window.SavedPlaces.remove(target.id).then(function (res) {
+        // 성공하면 저장소가 onChange로 알려주고 render()가 카드를 지운다.
+        if (res && res.ok) {
+          closeRemoveDialog();
+          return;
+        }
+
+        confirmBtn.disabled = false;
+        target.button.disabled = false;
+        target.item.classList.remove('is-busy');
+        setRemoveStatus('지우지 못했어요. 잠시 뒤에 다시 해주세요', true);
+      });
+      return;
+    }
+
+    /* 배경(::backdrop)을 눌렀을 때다 — visit-dialog와 같은 판정. */
+    if (event.target === removeDialog) closeRemoveDialog();
+  });
+
+  /* Esc로 닫을 때는 위 핸들러를 타지 않고 브라우저가 바로 close 이벤트를 쏜다.
+     정리를 여기 두어야 세 경로(취소·배경·Esc)가 모두 지나간다. */
+  removeDialog.addEventListener('close', function () {
+    pendingRemove = null;
+    if (removeOpener && document.contains(removeOpener)) removeOpener.focus();
+    removeOpener = null;
+  });
+
   // 「또 올까」 두 버튼
   dialogForm.addEventListener('click', function (event) {
     var choice = event.target.closest('.visit-choice');
@@ -402,26 +483,13 @@
         return;
       }
 
-      // ② 지우기
+      // ② 지우기 — 곧바로 지우지 않고 확인창을 연다 (아래 「삭제 확인창」 참고)
       var removeBtn = event.target.closest('[data-action="remove"]');
       if (!removeBtn) return;
       if (removeBtn.disabled) return;
+      if (!place) return;
 
-      /* 왕복하는 동안 잠근다. 연타하면 같은 행에 delete가 두 번 나가고,
-         두 번째는 지울 것이 없어 성공으로 돌아온다 — 화면은 멀쩡한데
-         무료 요청만 두 번 쓴다. */
-      removeBtn.disabled = true;
-      item.classList.add('is-busy');
-      setStatus('');
-
-      window.SavedPlaces.remove(item.dataset.kakaoId).then(function (res) {
-        // 성공하면 저장소가 onChange로 알려주고 render()가 카드를 지운다.
-        if (res && res.ok) return;
-
-        removeBtn.disabled = false;
-        item.classList.remove('is-busy');
-        setStatus('지우지 못했어요. 잠시 뒤에 다시 해주세요', true);
-      });
+      openRemoveDialog(place, item, removeBtn);
     });
   }
 
