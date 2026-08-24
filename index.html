@@ -11,6 +11,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="stylesheet" href="style.css">
+<!-- 랜딩페이지의 추천 두 코너 전용. style.css 다음에 로드된다 -->
+<link rel="stylesheet" href="home.css">
 </head>
 <body>
 
@@ -102,7 +104,30 @@
   </div>
 </section>
 
-<!-- ⑤ 기능 미리보기 — 태블릿부터 2×2 -->
+<!-- ⑤ 나를 위한 추천 — **로그인한 사람에게만 보인다.**
+     세션 복원이 끝나기 전에는 로그인 여부를 모르므로 hidden으로 시작한다.
+     미리 펴두면 비로그인 방문자에게 잠깐 나타났다 접히는 것이 보인다
+     (`.site-auth`가 로그인 버튼을 미리 그리지 않는 것과 같은 이유 — CLAUDE.md ⑰). -->
+<section id="for-you" class="section section--alt" hidden>
+  <div class="container container--wide">
+    <h2 class="h1 section__title">담아두신 곳을 보니,<br>여기도 어울려요</h2>
+    <p class="body pick-reason" id="for-you-reason" hidden></p>
+    <ul class="plain-list pick-list" id="for-you-list"></ul>
+    <p class="pick-status" id="for-you-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<!-- ⑥ 지금 인기 — 로그인과 무관하다. 비로그인 방문자가 이 페이지에서
+     처음 만나는 실제 데이터라, 세션 복원을 기다리지 않고 바로 채운다. -->
+<section id="popular" class="section section--bg">
+  <div class="container container--wide">
+    <h2 class="h1 section__title">요즘 사람들이<br>가장 많이 담은 곳</h2>
+    <ol class="plain-list pick-list" id="popular-list"></ol>
+    <p class="pick-status" id="popular-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<!-- ⑦ 기능 미리보기 — 태블릿부터 2×2 -->
 <section id="features" class="section section--alt">
   <div class="container container--wide">
     <h2 class="h1 section__title">이런 것들을<br>하나씩 열고 있어요</h2>
@@ -141,7 +166,7 @@
   </div>
 </section>
 
-<!-- ⑥ 마무리 CTA -->
+<!-- ⑧ 마무리 CTA -->
 <section id="closing" class="section section--bg">
   <div class="container closing">
     <h2 class="h1 section__title">오늘 점심,<br>더 고민하지 마세요</h2>
@@ -165,7 +190,7 @@
   </div>
 </section>
 
-<!-- ⑦ 푸터 — PC에서 좌우 배치 -->
+<!-- ⑨ 푸터 — PC에서 좌우 배치 -->
 <footer class="section--alt footer">
   <div class="container container--wide footer__inner">
     <p class="caption footer__brand">오늘은 여기</p>
@@ -175,6 +200,10 @@
     </div>
   </div>
 </footer>
+
+<!-- 담기 결과 알림 (UI-CONTRACT 「.toast」). save.html과 같은 마크업이다.
+     스타일은 두 페이지가 함께 쓰므로 save.css가 아니라 style.css에 있다. -->
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <!-- 로그인 창 (UI-CONTRACT 「.auth-dialog」)
      <dialog>인 이유는 .review-panel과 같다 — showModal()이 포커스 가둠·Esc 닫기·
@@ -215,6 +244,11 @@
      검색·리뷰·분석은 로그인과 무관하게 그대로 돈다. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"></script>
 <script src="auth.js"></script>
+<!-- 순서가 있다. saved-places.js와 popular-places.js는 Auth.client()로 클라이언트를
+     받아가므로 auth.js 뒤여야 하고, home.js는 그 둘의 창구를 쓰므로 맨 뒤다. -->
+<script src="saved-places.js"></script>
+<script src="popular-places.js"></script>
 <script src="app.js"></script>
+<script src="home.js"></script>
 </body>
 </html>

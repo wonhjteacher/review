@@ -892,37 +892,8 @@ html:has(.review-panel[open]) { overflow: hidden; }
   border-left-width: 4px;
 }
 
-/* ============================================================
-   토스트
-   표시 여부는 JS가 hidden 속성으로 제어한다.
-   .toast의 display 선언이 [hidden]을 이기므로 아래 규칙이 반드시 필요하다.
-   ============================================================ */
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  max-width: calc(100% - 40px);
-  padding: 12px 20px;
-  background: var(--color-ink-900);
-  color: #FFFFFF;                   /* ink-900 위 17.97:1 */
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  border-radius: var(--radius-full);
-  animation: toast-in var(--dur-base) var(--ease) both;
-}
-
-/* 이 한 줄이 없으면 토스트가 영영 사라지지 않는다 */
-.toast[hidden] { display: none; }
-
-@keyframes toast-in {
-  from { opacity: 0; transform: translate(-50%, 8px); }
-  to   { opacity: 1; transform: translate(-50%, 0); }
-}
+/* 토스트(.toast)는 index.html도 함께 쓰므로 style.css로 옮겼다.
+   여기서 다시 선언하지 않는다 — 두 곳에 있으면 조용히 갈라진다. */
 
 /* ============================================================
    모션 축소 설정 (DESIGN 6장)
@@ -942,12 +913,6 @@ html:has(.review-panel[open]) { overflow: hidden; }
 
   .search__submit:active,
   .place-card__save:active { transform: none; }
-
-  .toast { animation: toast-fade-in var(--dur-base) var(--ease) both; }
-  @keyframes toast-fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
 }
 
 /* 로그인해야 담을 수 있다는 안내 (UI-CONTRACT 「.saved__locked」).

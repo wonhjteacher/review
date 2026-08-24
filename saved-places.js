@@ -77,6 +77,12 @@ window.SavedPlaces = (function () {
       rowId: text(row.id),           // 행 자체의 uuid. 삭제할 때 쓴다
       id: placeId,                   // 카카오 place id. 화면이 가게를 가리키는 키
       name: text(row.place_name),
+
+      /* 카카오 원본 계층 문자열 그대로다 — "음식점 > 한식 > 국밥".
+         마디를 여기서 자르지 않는다. 카드는 마지막 마디를, 맞춤 추천은
+         두 번째 마디를 쓰는데, 잘라서 넘기면 둘 중 하나가 재료를 잃는다. */
+      category: text(row.category_name),
+
       address: text(row.road_address_name),
       x: text(row.x),
       y: text(row.y),
@@ -152,7 +158,7 @@ window.SavedPlaces = (function () {
 
     return client
       .from(TABLE)
-      .select('id, place_id, place_name, road_address_name, x, y, place_url, created_at, visited_at, note, would_return')
+      .select('id, place_id, place_name, category_name, road_address_name, x, y, place_url, created_at, visited_at, note, would_return')
       .order('created_at', { ascending: false })   // 최근에 담은 것이 위로
       .then(function (res) {
         if (mine !== seq) return;                  // 더 새 요청이 이미 나갔다
@@ -255,6 +261,7 @@ window.SavedPlaces = (function () {
       var row = {
         place_id: placeId,
         place_name: text(place.place_name),
+        category_name: text(place.category_name) || null,
         road_address_name: text(place.road_address_name) || null,
         x: text(place.x) || null,
         y: text(place.y) || null,
@@ -264,7 +271,7 @@ window.SavedPlaces = (function () {
       return client
         .from(TABLE)
         .insert(row)
-        .select('id, place_id, place_name, road_address_name, x, y, place_url, created_at, visited_at, note, would_return')
+        .select('id, place_id, place_name, category_name, road_address_name, x, y, place_url, created_at, visited_at, note, would_return')
         .single()
         .then(function (res) {
           if (res.error) {
@@ -327,7 +334,7 @@ window.SavedPlaces = (function () {
         .from(TABLE)
         .update(patch)
         .eq('place_id', key)
-        .select('id, place_id, place_name, road_address_name, x, y, place_url, created_at, visited_at, note, would_return')
+        .select('id, place_id, place_name, category_name, road_address_name, x, y, place_url, created_at, visited_at, note, would_return')
         .then(function (res) {
           if (res.error) {
             if (window.console) console.error('[saved-places] 기록 저장 실패', res.error);

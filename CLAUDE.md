@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 핵심 가치는 검색이 아니라 **결정**이다.
 현재 Phase 0(랜딩페이지 + 체험 데모)과 Phase 1의 맛집 담기(F1)가 구현되어 있다.
 담아둔 곳은 **계정에 저장된다** — Supabase `saved_places` 테이블 + RLS.
+랜딩페이지에는 추천 코너가 둘 붙어 있다 — **지금 인기**(모두의 집계)와 **나를 위한 추천**(내 취향).
 
 ## 명령어
 
@@ -21,8 +22,11 @@ PORT=8080 python3 server.py      # 포트 변경
 `server.py`가 `python3 -m http.server`를 **대체한다.** 정적 파일을 그대로 서빙하면서
 `/api/search` 한 경로만 가로채 카카오 로컬 API로 중계한다. 표준 라이브러리만 쓴다 — `pip install` 금지.
 
-**랜딩페이지(`index.html`)만 볼 때는 여전히 `file://`로 열어도 된다.**
-담기 페이지(`save.html`)는 `fetch('/api/search')`·`fetch('/api/reviews')`·`fetch('/api/analyze')`를 쓰므로 반드시 서버로 띄워야 한다.
+**이제 세 페이지 모두 서버로 띄운다. `file://`로 여는 길은 닫혔다.**
+담기 페이지(`save.html`)는 `fetch('/api/search')`·`fetch('/api/reviews')`·`fetch('/api/analyze')`를 쓰고,
+**랜딩페이지(`index.html`)도 맞춤 추천이 `fetch('/api/search')`를 쓴다.**
+`file://`로 열면 그 코너만 `추천을 불러오지 못했어요`가 되고 인기 코너와 데모는 그대로 돈다 —
+**에러가 아니라 부분 고장이라 알아채기 어렵다.**
 
 `gh` CLI는 Homebrew가 아니라 `~/.local/bin/gh`에 직접 설치되어 있다.
 
@@ -87,9 +91,18 @@ api/analyze.js   배포 — 구글 Gemini 분석.  같음. 셋 중 여기만 POS
 
 ```
 Phase 0 — 랜딩페이지
-index.html   섹션 7개 마크업. 데모 영역(#demo-stage)만 비어 있고 JS가 채운다
-style.css    DESIGN.md의 토큰·스케일·컴포넌트 수치를 그대로 옮긴 것. 두 페이지가 공유한다
+index.html   섹션 9개 마크업. 데모(#demo-stage)와 추천 두 코너만 비어 있고 JS가 채운다
+style.css    DESIGN.md의 토큰·스케일·컴포넌트 수치를 그대로 옮긴 것. 세 페이지가 공유한다
+             `.toast`도 여기 있다 — index.html과 save.html이 **같은 마크업을** 쓰기 때문이다
 app.js       PLACES 데이터 + pickPlace() + 데모 상태 관리
+
+Phase 1 — 랜딩페이지의 추천 두 코너
+home.js      「지금 인기」와「나를 위한 추천」 렌더 + 담기. 두 목록의 생김새가 같아 한 파일이다
+home.css     두 코너 전용 스타일. style.css 다음에 로드된다
+popular-places.js  `popular_places()` rpc 래퍼. 공개 창구는 window.PopularPlaces 하나뿐이다
+supabase-popular-places.sql  랭킹 함수 DDL + grant. 대시보드 SQL Editor에서 실행한다 (㉓)
+supabase-category-column.sql saved_places.category_name 추가. 맞춤 추천의 재료다
+supabase-seed-dummy.sql      더미 계정 12개 + 담은 기록 100건. 랭킹을 눈으로 보려고 만든 것이다
 
 Phase 1 — 맛집 담기
 server.py    정적 서버 + /api/search·/api/reviews·/api/analyze 프록시. 표준 라이브러리만
@@ -473,6 +486,99 @@ Supabase는 **비밀번호 오류와 미가입 계정에 같은 코드**를 돌�
 - **`wouldReturn`을 `Boolean()`으로 감싸지 않는다.** `null`(아직 답 안 함)과 `false`(글쎄요)가
   같아져 **「글쎄요」라고 답한 데이터가 사라진다.** ⑬의 `Number("")`와 같은 계열이다
 
+### ㉓ 인기 랭킹은 **RLS를 끄지 않는다.** `popular_places()` 함수가 대신 센다
+
+랭킹은 「**모두**가 담은 것」을 세는 일인데, `saved_places`의 select 정책은
+`auth.uid() = user_id`다. 브라우저에서 무엇을 물어봐도 **내 것만** 돌아온다 —
+거기서 `count`를 세면 「모두가 담은 수」가 아니라 **내 목록의 길이**가 나온다.
+
+**여기서 RLS를 끄고 싶어진다. 끄면 안 된다.**
+끄는 순간 publishable 키만 있는 누구나 남의 담아둔 목록을 통째로 읽는다.
+키는 `auth.js`에 그대로 적혀 있다 (⑯). 랭킹 하나 때문에 방어선 전체가 무너진다.
+
+→ **세는 일만** 대신해 주는 `security definer` 함수를 하나 두고 그것만 부른다.
+RLS를 넘어가는 것은 **함수 안에서만**이고, 밖으로는 집계값만 나간다.
+
+새어나가지 않게 하는 장치가 셋이다. 함수를 고칠 때 셋 다 유지한다:
+
+- **`returns table`에 `user_id`가 아예 없다.** 흘릴 통로 자체를 만들지 않는다.
+  `returns setof saved_places`로 바꾸면 이 방어가 통째로 사라진다
+- **집계만 내보낸다.** 「누가」는 `count(distinct user_id)` 안에서 숫자로 접힌다
+- **`set search_path = public, pg_temp`** — 호출자가 `search_path`를 바꿔
+  다른 `saved_places`를 가리키게 만드는 수법을 막는다. `security definer`에는 반드시 붙인다
+
+```sql
+select relrowsecurity from pg_class where relname = 'saved_places';   -- 여전히 t 여야 한다
+
+set local role anon;
+select (select count(*) from public.saved_places)      as 직접읽기,   -- 0 이어야 한다
+       (select count(*) from public.popular_places(5)) as 함수로;     -- 5 여야 한다
+```
+
+**Supabase 보안 어드바이저가 이 함수에 경고 두 줄을 띄운다** —
+`Public Can Execute SECURITY DEFINER Function`과 그 authenticated 판이다.
+**의도한 것이다.** 이 함수는 애초에 남의 집계를 보여주려고 만든 창구다.
+경고를 없애려고 `grant`를 걷어내면 랭킹 코너가 통째로 죽는다.
+확인할 것은 「경고가 있는가」가 아니라 「**이 함수가 무엇을 내보내는가**」다.
+
+### ㉔ 창구가 `auth.js`를 기다린다. 부르는 쪽이 시점을 알게 하지 않는다
+
+`auth.js`는 supabase 클라이언트를 **`DOMContentLoaded`에서** 만든다.
+그런데 본문 끝의 `<script>`는 그보다 **먼저** 실행된다.
+그래서 페이지가 뜨자마자 `Auth.client()`를 부르면 **아직 `null`이다.**
+
+돌아오는 것은 예외가 아니라 `{ ok: false, reason: 'unavailable' }`다 —
+**콘솔에 아무것도 남지 않고** 화면에는 「불러오지 못했어요」만 뜬다.
+⑰의 「복원 전에 `isSignedIn()`을 읽으면 조용히 틀린 값이 나온다」와 같은 계열이고,
+인기 코너를 처음 붙였을 때 실제로 이것으로 한 번 걸렸다.
+**콘솔이 조용한 것이 오히려 단서다.**
+
+고치는 자리는 **부르는 쪽이 아니라 창구 쪽이다.**
+
+```js
+// popular-places.js — 창구가 안에서 기다린다
+function whenReady() {
+  if (window.Auth && window.Auth.ready) return window.Auth.ready;
+  return Promise.resolve();
+}
+```
+
+부르는 쪽마다 「언제 불러야 안전한가」를 알아야 한다면 그 지식이 곧 다음 버그가 된다.
+`SavedPlaces`가 `Auth.onChange`로 시작하는 것도 같은 이유다 —
+**창구는 자기 준비를 스스로 책임진다.**
+
+### ㉕ 맞춤 추천은 카카오 카테고리의 **두 번째 마디**로 묶는다
+
+카카오는 `음식점 > 한식 > 국밥`처럼 계층으로 준다. 쓰는 데가 둘인데 **깊이가 다르다:**
+
+- 카드에 보여주는 작은 글씨 → **마지막 마디** (`국밥`)
+- 취향을 묶는 단위 → **두 번째 마디** (`한식`)
+
+마지막 마디로 세면 국밥·감자탕·해장국이 전부 따로 놀아 **1건짜리 잔가지만 잔뜩 생긴다.**
+최빈값이 의미를 잃고, 「자주 담는 카테고리」가 사실상 「가장 최근에 담은 곳」이 된다.
+
+그래서 **`saved_places.category_name`에는 계층 문자열을 통째로 넣는다.**
+잘라서 저장하면 어느 깊이로 자를지를 DB가 먼저 정해버려, 나중에 다른 깊이가 필요할 때 재료가 없다.
+
+세 가지를 더 지킨다:
+
+- **컬럼이 생기기 전에 담긴 행은 `category_name`이 `null`이다.** 억지로 채우지 않고
+  **세지 않고 넘어간다.** 전부 null이면 `한 곳만 더 담으면 취향을 찾아드릴게요`로 받는다
+- **조사를 받침에 맞춰 고른다** — `한식을` / `카페를`.
+  `한식을(를)`처럼 괄호로 미루지 않는다. 괄호가 섞이는 순간 사람이 쓴 문장이 아니게 된다
+- **`AI 추천`이라고 쓰지 않는다** (③). 이 추천은 담은 카테고리를 세는 **규칙 기반**이다
+
+### ㉖ 담은 뒤에도 추천 카드는 사라지지 않는다
+
+「이미 담은 가게는 추천에서 뺀다」는 목록을 **만들 때** 지키는 약속이다.
+`SavedPlaces.onChange`가 올 때마다 추천을 다시 받으면, 담기 버튼을 누른 **그 카드가**
+눈앞에서 사라진다 — 토스트는 `담았어요`인데 카드는 없어지니 취소된 것처럼 보인다.
+
+→ `home.js`는 **무엇을 기준으로 받았는지**(`지역|카테고리`)를 들고 있다가
+같은 기준이면 다시 받지 않고 **버튼 상태만 맞춘다.**
+사람이 바뀌면(`Auth.onChange`) 그 기준을 버린다 — 버리지 않으면 앞사람 취향으로
+받아둔 목록이 다음 사람 화면에 그대로 남는다.
+
 ## 검증
 
 테스트 프레임워크가 없으므로 브라우저 콘솔에서 확인한다.
@@ -574,13 +680,86 @@ Supabase는 **비밀번호 오류와 미가입 계정에 같은 코드**를 돌�
 `close` 이벤트가 뒤늦게 도착해 `editing`을 지워, 저장이 조용히 무시된다.
 자동화에서 닫고 다시 열 때는 사이에 한 틱을 둔다.
 
+**추천 두 코너 (㉓~㉖)**
+
+- `python3 server.py`로 띄운다. **`file://`로는 맞춤 추천만 조용히 죽는다** — 인기 코너와 데모는 돌아서
+  페이지가 멀쩡해 보인다
+- **랭킹이 RLS를 우회하지 **않는지** 먼저 잰다. 이것이 이 기능에서 가장 중요한 검사다** (㉓):
+  ```sql
+  set local role anon;
+  select (select count(*) from public.saved_places)      as 직접읽기,   -- 0
+         (select count(*) from public.popular_places(5)) as 함수로;     -- 5
+  ```
+  **내 계정으로만 보면 이 차이가 드러나지 않는다.** 로그인한 채로는 둘 다 값이 나온다
+- 함수가 무엇을 내보내는지 **DB에 직접 물어본다.** 파일을 눈으로 읽지 않는다 —
+  배포된 함수와 파일이 어긋나 있을 수 있다. `user_id`가 **없어야** 한다:
+  ```sql
+  select unnest(proargnames) as 반환컬럼 from pg_proc where proname = 'popular_places';
+  -- limit_count(입력) · rank · place_id · place_name · category_name
+  --   · road_address_name · x · y · place_url · save_count
+  ```
+- 계약 정합성은 담기 페이지와 같은 방식으로 잰다 — `index.html`+`home.js`가 쓰는 클래스와
+  `home.css`가 스타일하는 선택자를 양방향 대조해 **죽은 CSS 0건 · 미구현 0건**.
+  `home.js`도 `el(tag, className, text)` 헬퍼를 쓰므로 **2번째 인자까지** 긁는다.
+  `setStatus(node, msg, kind)`가 `'pick-status--' + kind`로 조립하는 것은 정규식에 잡히지 않으니
+  `kind` 인자를 따로 모은다
+- **비로그인으로 먼저 연다.** 인기 5곳이 뜨고 `#for-you`가 `hidden`이어야 한다.
+  인기 목록의 담기를 누르면 **저장되지 않고** 로그인 창이 떠야 한다
+  (`SavedPlaces.count()`가 그대로인지로 잰다)
+- 더미 계정으로 들어가 맞춤 추천을 잰다. **계정마다 다른 목록이 나와야 한다** —
+  `seed01`(25건 담음)과 `seed03`(10건)은 지역도 카테고리도 다르게 잡힌다.
+  같은 목록이 나오면 앞사람 기준이 남은 것이다 (㉖)
+- 이미 담은 곳이 추천에서 빠졌는지 대조한다:
+  ```js
+  const 담은것 = new Set(SavedPlaces.list().map(i => i.id));
+  [...document.querySelectorAll('#for-you-list .pick-card')].some(c => 담은것.has(c.dataset.placeId));
+  // false 여야 한다
+  ```
+- **담기를 눌러도 카드가 사라지지 않아야 한다** (㉖). 라벨이 `담았어요`로 바뀌고
+  `SavedPlaces.count()`가 1 늘면 된다. 카드가 사라지면 목록을 매번 다시 받고 있는 것이다
+- 상태 다섯을 각각 태운다 — 담은 곳 0건 · 불러오는 중 · 목록 읽기 실패 · 검색 실패 · 새 곳 0건.
+  **`window.fetch`를 통째로 막지 말 것** — supabase 왕복까지 함께 죽어서
+  「담아둔 곳을 불러오지 못했어요」가 뜬다. 검색 실패만 재현하려면 URL을 보고 갈라야 한다:
+  ```js
+  const real = window.fetch.bind(window);
+  window.fetch = (u, o) => String(u).indexOf('/api/search') >= 0
+    ? Promise.reject(new Error('offline')) : real(u, o);
+  ```
+- **검색 실패를 들고 있지 않은지 확인한다.** `fetch`를 되돌리고 `SavedPlaces.refresh()`를
+  부르면 다시 시도해야 한다. 실패를 캐시하면 새로고침 전까지 고쳐지지 않은 것처럼 보인다 (⑫와 같은 결)
+
+**주의:** 패치를 걸기 **전에** 페이지가 이미 추천을 다 받아왔으면 재조회 자체가 일어나지 않아
+(㉖의 기준 캐시 때문에) **성공 화면을 실패로 착각한 채 측정하게 된다.**
+로그아웃→로그인으로 기준을 확실히 비운 뒤에 잰다.
+
+**더미 데이터**
+
+- `supabase-seed-dummy.sql`이 계정 12개 + 담은 기록 100건을 만든다. 여러 번 실행해도 안전하다
+- 지울 때는 계정만 지운다 — `saved_places` 행은 `on delete cascade`로 함께 사라진다:
+  ```sql
+  delete from auth.users where raw_user_meta_data->>'seed_data' = 'true';
+  ```
+- **`auth.users`에 손으로 넣을 때 토큰 칸 넷을 빈 문자열로 채운다** —
+  `confirmation_token`·`recovery_token`·`email_change_token_new`·`email_change`.
+  컬럼 기본값이 없어 `null`이 들어가는데, GoTrue는 이 넷을 Go의 `string`으로 읽으므로
+  `null`을 만나면 조회가 통째로 실패한다:
+  ```
+  AuthApiError: Database error querying schema
+  ```
+  **계정은 멀쩡히 보이는데 로그인만 안 되는** 상태가 된다. 대시보드로 만든 계정에는
+  이미 `''`이 들어 있어 이 함정이 없다 — 그래서 시드에서만 터진다
+- `auth.identities` 행도 함께 넣는다. 없으면 같은 증상이 난다
+- **가짜 `place_id`를 지어내지 않는다.** 카카오에서 실제 장소를 받아 쓴다 —
+  지어내면 `place_url` 링크가 죽고 구글 리뷰 조회가 엉뚱한 가게를 물어온다
+
 ## 범위 밖 (Phase 0~1)
 
 서버 DB, 리뷰 리스트, 대시보드, 사전 신청 이메일 수집. 로드맵은 PRD 7장 참고.
 (**방문 기록은 범위 안으로 들어왔다** — `saved_places`의 `visited_at`·`note`·`would_return` 셋. ㉒)
 
 **범위 안으로 들어온 것** — 맛집 담기(F1) · 구글 리뷰 보기 · Gemini 리뷰 분석 ·
-**로그인(F7)** · **계정별 저장과 마이페이지** · **방문 기록**.
+**로그인(F7)** · **계정별 저장과 마이페이지** · **방문 기록** ·
+**인기 랭킹**과 **맞춤 추천**(랜딩페이지 두 코너).
 카카오 로컬 API 검색, 구글 Places API (New) 리뷰 조회, Gemini 분석,
 Supabase 이메일 로그인과 `saved_places` 저장이 붙었다.
 
@@ -593,7 +772,14 @@ Supabase 이메일 로그인과 `saved_places` 저장이 붙었다.
 
 체험 데모의 `PLACES`는 여전히 하드코딩이고 담기 목록과 **연결되어 있지 않다.**
 「담아둔 맛집 중에서 골라준다」는 핵심 가치를 실제 데이터로 잇는 것이 다음 단계다 —
-`saved_places`가 그 재료를 이제 들고 있다.
+`saved_places`가 그 재료를 이제 들고 있고, **맞춤 추천이 그 재료를 처음으로 읽기 시작했다.**
+
+**추천 두 코너는 성격이 다르다.** 인기 랭킹은 **모두의 집계**라 DB 함수가 세어주고(㉓),
+맞춤 추천은 **내 것만** 보면 되므로 RLS가 걸러준 목록을 그대로 쓴다.
+둘을 한 창구로 합치려 하지 말 것 — 합치는 순간 「내 것만」과 「모두의 것」의 경계가 흐려진다.
+
+**현재 `saved_places`에는 더미 100건이 들어 있다**(계정 12개). 랭킹을 눈으로 보려고 넣은 것이고,
+`supabase-seed-dummy.sql`에 적힌 한 줄로 계정째 지울 수 있다. **실서비스 전에 지운다.**
 
 **Gemini API 키는 여전히 클라이언트에 넣지 않는다** (PRD 8장) — `api/analyze.js` 프록시가 그 이유다.
 Supabase publishable 키는 성격이 달라 클라이언트에 있다. 둘을 같은 규칙으로 묶지 않는다 (⑯).

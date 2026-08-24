@@ -862,6 +862,10 @@
       : window.SavedPlaces.add({
           id: place.id,
           place_name: place.place_name,
+          /* 계층 문자열을 자르지 않고 통째로 넘긴다 — 맞춤 추천이 두 번째 마디를 쓴다.
+             카드가 보여주는 lastCategory()의 결과를 넘기면 "국밥"만 남아
+             한식으로 묶이지 않는다. */
+          category_name: place.category_name,
           road_address_name: addressOf(place),
           x: place.x,
           y: place.y,

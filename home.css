@@ -1,0 +1,214 @@
+/* ============================================================
+   오늘은 여기 — 랜딩페이지의 추천 두 코너 (Phase 1)
+
+   style.css **다음에** 로드된다. 토큰·타이포·컨테이너·토스트는
+   전부 style.css의 것을 쓰고, 여기에는 두 코너에만 있는 것만 둔다.
+
+   클래스 이름은 UI-CONTRACT.md 「.pick-list · .pick-card · .pick-status」가
+   사양이다. 계약서에 없는 선택자를 여기서 지어내지 않는다.
+   ============================================================ */
+
+/* ── 목록 ──────────────────────────────────────────────────────
+   카드를 가로로 늘어놓지 않는다. 인기 랭킹은 1위부터 아래로 읽는 것이고,
+   맞춤 추천도 다섯 줄이라 한 줄씩 훑는 편이 빠르다.
+   .cards(그리드)를 쓰지 않는 이유가 이것이다. */
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 768px) { .pick-list { gap: 16px; } }
+
+/* ── 카드 ──────────────────────────────────────────────────────
+   그림자는 결과 카드에만 쓴다 (DESIGN 4장). 여기는 1px 테두리로 구분한다 —
+   ②·③·⑤ 섹션의 .empathy · .step · .feature와 같은 규칙이다. */
+.pick-card {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;          /* 모바일에서 담기 줄이 아래로 내려간다 */
+  gap: 12px 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+@media (min-width: 768px) {
+  .pick-card { flex-wrap: nowrap; padding: 24px; }
+}
+
+/* 순위 숫자. ③ 해결 방식의 .step__num과 같은 자리에 같은 색을 쓴다 —
+   토마토 레드를 작은 숫자에만 얹는 것은 DESIGN 10장이 허용하는 범위다
+   (넓은 배경 면적에는 쓰지 않는다). 흰 배경 위 4.57:1이고
+   22px 700이라 큰 글씨 기준(3:1)에는 여유가 있다. */
+.pick-card__rank {
+  flex: 0 0 auto;
+  width: 28px;
+  color: var(--color-primary);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;   /* 1과 4의 폭이 달라 줄이 어긋나지 않게 */
+}
+
+/* min-width:0이 없으면 긴 가게 이름이 플렉스 항목을 밀어내 카드가 넘친다 */
+.pick-card__body {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.pick-card__category { color: var(--color-ink-500); }
+.pick-card__name     { margin-top: 2px; }
+.pick-card__address  {
+  color: var(--color-ink-500);
+  font-weight: 400;
+  margin-top: 4px;
+}
+
+/* 담긴 수와 담기 버튼. 모바일에서는 한 줄을 통째로 차지하며 양끝으로 벌어진다 */
+.pick-card__side {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .pick-card__side {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    gap: 16px;
+  }
+}
+
+.pick-card__count {
+  color: var(--color-ink-500);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* ── 담기 버튼 ─────────────────────────────────────────────────
+   save.css의 `.place-card__save`와 **같은 모양이어야 한다.**
+   한쪽을 고치면 다른 쪽도 함께 고친다 — 같은 동작을 하는 버튼이
+   페이지에 따라 다르게 보이면 그것부터 버그로 읽힌다. */
+.pick-card__save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;              /* 터치 영역 (DESIGN 9장) */
+  padding: 0 16px;
+  background: var(--color-bg);
+  /* 흰 배경 위 primary는 4.57:1로 겨우 통과한다. 여유를 두어
+     한 단계 어두운 hover 값(5.83:1)을 글자에 쓴다. 테두리는 primary 그대로 */
+  color: var(--color-primary-hover);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  transition: background var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+.pick-card__save:hover  { background: var(--color-primary-tint); }
+.pick-card__save:active { transform: scale(0.98); }
+
+/* 담은 뒤 — 강조를 거둔다. 색 말고도 배경·테두리·굵기(700→400)가
+   함께 바뀌므로 흑백에서도 두 상태가 구별된다. */
+.pick-card__save.is-saved {
+  background: var(--color-surface-alt);
+  color: var(--color-ink-700);      /* surface-alt 위 9.27:1 */
+  font-weight: 400;
+  border-color: var(--color-line);
+}
+.pick-card__save.is-saved:hover {
+  color: var(--color-ink-900);
+  border-color: var(--color-ink-300);
+}
+
+.pick-card__save:disabled { opacity: 0.6; cursor: default; }
+
+/* ── 추천 이유 한 줄 ───────────────────────────────────────────
+   제목 바로 아래. 왜 이 목록이 나왔는지 말해주는 자리다.
+   .for-you__가 아니라 .pick-인 이유 — 이름을 코너가 아니라 부품에 건다.
+   나중에 다른 코너가 같은 줄을 쓰면 그대로 가져다 쓴다. */
+.pick-reason {
+  color: var(--color-ink-700);
+  margin: -8px 0 20px;
+}
+
+/* ── 안내 문구 ─────────────────────────────────────────────────
+   save.css의 `.search__status`와 같은 규칙이다.
+   평상시에는 자리를 차지하지 않고, 상태 클래스가 붙을 때만 나타난다. */
+.pick-status { display: none; }
+
+.pick-status--loading,
+.pick-status--empty,
+.pick-status--error {
+  display: block;
+  margin: 0;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.60;
+  letter-spacing: -0.01em;
+  border-radius: var(--radius-md);
+}
+
+/* 로딩 — 색이 아니라 움직이는 점으로 진행 중임을 알린다 */
+.pick-status--loading {
+  background: var(--color-bg);
+  color: var(--color-ink-700);
+}
+.pick-status--loading::after {
+  content: "";
+  display: inline-block;
+  width: 4px; height: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+  border-radius: var(--radius-full);
+  background: var(--color-ink-500);
+  animation: pick-status-pulse 1.2s var(--ease) infinite;
+}
+
+@keyframes pick-status-pulse {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 1; }
+}
+
+/* 0건 — 담담한 안내. 테두리 없이 면으로만 */
+.pick-status--empty {
+  background: var(--color-bg);
+  color: var(--color-ink-700);
+}
+
+/* 두 코너의 배경색이 다르므로 안내 문구의 면도 뒤집는다.
+   alt 배경(#FAF8F7) 위에 흰 면이 올라가야 문구가 떠 보인다.
+   ink-700은 두 배경 모두에서 AA를 넘는다 (9.81 / 9.27 — CLAUDE.md ⑥). */
+.section--bg .pick-status--loading,
+.section--bg .pick-status--empty {
+  background: var(--color-surface-alt);
+}
+
+/* 에러 — 색만으로 구분하지 않는다.
+   흰 바탕에 테두리를 두르고 왼쪽 굵은 띠를 더해 형태로도 구별된다. */
+.pick-status--error {
+  background: var(--color-bg);
+  color: var(--color-error);         /* 흰 배경 7.19:1 */
+  font-weight: 600;
+  border: 1px solid var(--color-error);
+  border-left-width: 4px;
+}
+
+/* ── 모션 축소 (DESIGN 6장) ────────────────────────────────────
+   transform은 빼고 필요한 것만 남긴다. */
+@media (prefers-reduced-motion: reduce) {
+  .pick-status--loading::after { animation: none; opacity: 1; }
+  .pick-card__save:active { transform: none; }
+}

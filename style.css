@@ -552,6 +552,12 @@ button {
   .btn-primary:active { transform: none; }
   .progress__fill { transition: none; }
 
+  .toast { animation: toast-fade-in var(--dur-base) var(--ease) both; }
+  @keyframes toast-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
   *, *::before, *::after {
     scroll-behavior: auto !important;
   }
@@ -784,4 +790,35 @@ button {
 .auth-dialog__signup:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* ============================================================
+   토스트 — index.html·save.html 두 페이지가 함께 쓴다.
+   그래서 save.css가 아니라 여기 있다 (UI-CONTRACT 「.toast」).
+   ============================================================ */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  max-width: calc(100% - 40px);
+  padding: 12px 20px;
+  background: var(--color-ink-900);
+  color: #FFFFFF;                   /* ink-900 위 17.97:1 */
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border-radius: var(--radius-full);
+  animation: toast-in var(--dur-base) var(--ease) both;
+}
+
+/* 이 한 줄이 없으면 토스트가 영영 사라지지 않는다 */
+.toast[hidden] { display: none; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }

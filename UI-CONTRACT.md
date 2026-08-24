@@ -4,6 +4,10 @@
 > **개정** 2026-08-20 — `<head>` 계약 추가 · `<body>` 컨테이너 조합 확정 (공백 2건 메움)
 > **개정** 2026-08-21 — 구글 리뷰 패널 추가. `.review-panel`·`.review-item` 계약 신설 ·
 >   `/api/search`가 `x`·`y`를 함께 내려보내도록 봉투 확장 · `/api/reviews` 봉투 신설
+> **개정** 2026-08-24 — 랜딩페이지에 추천 두 코너 추가. `.pick-list`·`.pick-card`·
+>   `.pick-status`·`.pick-reason` 계약 신설 · `window.PopularPlaces` 창구 신설 ·
+>   `SavedPlaces`에 `category` 추가 · `.toast`가 `style.css`로 이사 ·
+>   `.place-card`에서 `상세 보기` 링크 제거
 > **읽는 사람** `logic`(마크업 작성) · `design`(스타일 작성)
 > **이 파일은 두 팀원 모두 읽기 전용이다.** 변경이 필요하면 리드에게 SendMessage.
 
@@ -505,6 +509,9 @@ Content-Type: application/json
 
 - `hidden` 속성으로 토글한다. `display: none`을 CSS에서 강제하지 않는다 (JS가 `hidden`을 제어).
 - 문구: `담았어요` / `담기를 해제했어요`
+- **스타일은 `style.css`에 있다.** `save.html`과 `index.html`이 **같은 마크업을 그대로** 쓰므로
+  한쪽 페이지의 CSS에 두면 다른 쪽에서 스타일 없는 흰 글자가 된다.
+  `save.css`에 다시 선언하지 않는다 — 두 곳에 있으면 조용히 갈라진다.
 
 ---
 
@@ -693,10 +700,10 @@ if (window.Auth.isSignedIn()) { … }
 
 ```js
 // add() — /api/search가 준 place 객체의 필드명 그대로
-{ id, place_name, road_address_name, x, y, place_url }
+{ id, place_name, category_name, road_address_name, x, y, place_url }
 
 // list()·get() — 정규화된 Item
-{ rowId, id, name, address, x, y, url, savedAt,
+{ rowId, id, name, category, address, x, y, url, savedAt,
   visitedAt, note, wouldReturn }
 //  ↑행 uuid  ↑카카오 place id            ↑ms
 ```
@@ -888,6 +895,171 @@ Esc 닫기·배경 비활성을 브라우저에게서 공짜로 준다. 직접 �
 > **`isLoaded()`를 보지 않으면 「불러오는 중」이 「비어 있음」으로 보인다.**
 > 목록이 도착하기 전에도 `list()`는 빈 배열이라, 담아둔 것이 있는 사용자에게
 > 잠깐 `아직 담은 맛집이 없어요`가 스친다. ⑰과 같은 계열의 함정이다.
+
+---
+
+## 랜딩페이지의 추천 두 코너 — `index.html`
+
+`save.html`·`mypage.html`과 달리 **한 파일 안에 코너가 둘**이고,
+목록의 생김새는 **같다.** 그래서 클래스도 코너 이름이 아니라 부품 이름으로 붙인다
+(`.popular-…`/`.for-you-…`가 아니라 `.pick-…`).
+
+```html
+<head>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="home.css">   <!-- style.css 다음이어야 한다 -->
+</head>
+
+<!-- ⑤ 나를 위한 추천 — 로그인한 사람에게만 보인다 -->
+<section id="for-you" class="section section--alt" hidden>
+  <div class="container container--wide">
+    <h2 class="h1 section__title">담아두신 곳을 보니,<br>여기도 어울려요</h2>
+    <p class="body pick-reason" id="for-you-reason" hidden>{카테고리}을 가장 많이 담으셨어요</p>
+    <ul class="plain-list pick-list" id="for-you-list"></ul>
+    <p class="pick-status" id="for-you-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<!-- ⑥ 지금 인기 — 로그인과 무관하다 -->
+<section id="popular" class="section section--bg">
+  <div class="container container--wide">
+    <h2 class="h1 section__title">요즘 사람들이<br>가장 많이 담은 곳</h2>
+    <ol class="plain-list pick-list" id="popular-list"></ol>
+    <p class="pick-status" id="popular-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+```
+
+**`#for-you`는 `hidden`으로 시작한다.** 세션 복원이 끝나기 전에는 로그인 여부를
+알 수 없으므로 미리 펴두면 비로그인 방문자에게 잠깐 나타났다 접히는 것이 보인다
+(`.site-auth`가 로그인 버튼을 미리 그리지 않는 것과 같은 이유 — CLAUDE.md ⑰).
+
+**인기 목록은 `<ol>`, 추천 목록은 `<ul>`이다.** 순위가 있는 쪽만 순서 있는 목록이다 —
+낭독기가 「목록 5개 중 1번째」를 읽어주는 것이 순위와 겹치지 않게, 순위 숫자는
+화면용 `<span>`으로 따로 둔다.
+
+---
+
+## `.pick-card` — 추천 카드 (`.pick-list` 안, `<li>`)
+
+**두 코너가 같은 카드를 쓴다.** 다른 것은 `__rank`와 `__count`의 **유무뿐이다.**
+
+```html
+<li class="pick-card" data-place-id="{id}">
+  <span class="pick-card__rank">1</span>                    <!-- 인기 목록에만 -->
+  <div class="pick-card__body">
+    <p class="caption pick-card__category">{category_name 마지막 마디}</p>
+    <h3 class="h2 pick-card__name">{place_name}</h3>
+    <p class="caption pick-card__address">{road_address_name}</p>
+  </div>
+  <div class="pick-card__side">
+    <span class="caption pick-card__count">{n}명이 담았어요</span>   <!-- 인기 목록에만 -->
+    <button type="button" class="pick-card__save" data-action="save">담기</button>
+  </div>
+</li>
+```
+
+**카드 전체는 클릭 영역이 아니다.** `.place-card`와 다른 점이다 —
+랜딩페이지에는 리뷰 패널이 없으므로 카드를 눌러서 열 곳이 없다.
+
+**상세 보기 링크를 두지 않는다.** `.place-card`와 같은 규칙이다 —
+액션 줄은 `담기` 하나(인기 목록은 담긴 수 + 담기)뿐이다.
+
+**상태**
+
+| 클래스 | 의미 | 버튼 라벨 |
+|---|---|---|
+| `.pick-card__save` | 아직 안 담음 | `담기` |
+| `.pick-card__save.is-saved` | 이미 담음 | `담았어요` |
+
+- `.place-card__save`와 **같은 모양이어야 한다.** 한쪽을 고치면 다른 쪽도 함께 고친다 —
+  같은 일을 하는 버튼이 페이지마다 다르게 보이면 그것부터 버그로 읽힌다.
+- 비로그인 상태에서 누르면 저장하지 않고 **로그인 창을 띄운다**
+  (`Auth.requireSignIn('로그인하면 담아둘 수 있어요')`).
+- 왕복하는 동안 `disabled`로 잠근다. 잠그지 않으면 연타가 insert와 delete를 엇갈리게 보낸다.
+- **담긴 뒤에도 카드는 사라지지 않는다.** 「이미 담은 곳을 뺀다」는 목록을 **만들 때**
+  지키는 약속이다. 누르는 즉시 사라지면 방금 담은 것이 취소된 것처럼 보인다.
+
+---
+
+## `.pick-status` · `.pick-reason` — 안내 문구
+
+`.search__status`와 같은 규칙이다. 평상시에는 클래스가 `.pick-status` 하나뿐이라
+**자리를 차지하지 않고**, 상태 클래스가 붙을 때만 나타난다.
+
+| 클래스 | 언제 |
+|---|---|
+| `.pick-status--loading` | 인기 목록을 세는 중 · 담아둔 곳을 보는 중 · 어울리는 곳을 찾는 중 |
+| `.pick-status--empty` | 아직 담긴 곳이 없음 · 내가 담은 곳이 없음 · 추천할 새 곳이 없음 |
+| `.pick-status--error` | 인기 목록 실패 · 담아둔 곳 읽기 실패 · 추천 검색 실패 |
+
+**문구 표**
+
+| 코너 | 상황 | 문구 |
+|---|---|---|
+| 인기 | 부르는 중 | `인기 맛집을 세는 중이에요` |
+| 인기 | 0건 | `아직 담긴 곳이 없어요` |
+| 인기 | 실패 | `인기 목록을 불러오지 못했어요` |
+| 추천 | 목록 오는 중 | `담아둔 곳을 보는 중이에요` |
+| 추천 | 목록 실패 | `담아둔 곳을 불러오지 못했어요` |
+| 추천 | 담은 것 0건 | `맛집을 몇 곳 담으면 취향에 맞는 곳을 찾아드려요` |
+| 추천 | 카테고리를 알 수 없음 | `한 곳만 더 담으면 취향을 찾아드릴게요` |
+| 추천 | 검색 중 | `어울리는 곳을 찾는 중이에요` |
+| 추천 | 검색 실패 | `추천을 불러오지 못했어요` |
+| 추천 | 새 곳 0건 | `추천할 만한 새 곳을 찾지 못했어요` |
+
+`.pick-reason`은 왜 이 목록이 나왔는지 말해주는 한 줄이다 — `한식을 가장 많이 담으셨어요`.
+**목적격 조사를 받침에 맞춰 고른다.** `한식을` / `카페를` —
+`한식을(를)`처럼 괄호로 미루지 않는다 (DESIGN 7장).
+채울 것이 없으면 `hidden`을 붙여 접는다.
+
+**`AI 추천`이라고 쓰지 않는다** (PRD 4장 · DESIGN 7장 · CLAUDE.md ③).
+이 추천은 담은 카테고리를 세는 **규칙 기반**이다. 지금 못 지키는 약속을 카피에 넣지 않는다.
+
+---
+
+## `window.PopularPlaces` — 인기 랭킹 창구 (`popular-places.js`)
+
+`SavedPlaces`가 **내 것**을 다루는 창구라면, 여기는 **모두의 집계**를 다루는 창구다.
+읽는 경로부터 다르다 — 저쪽은 테이블을 직접 `select`하고(RLS가 걸러준다),
+이쪽은 `popular_places()` 함수를 `rpc`로 부른다.
+
+| 이름 | 반환 | 설명 |
+|---|---|---|
+| `PopularPlaces.top(n)` | `Promise<{ok, items?, reason?}>` | 담긴 수 상위 n곳. n은 1~20으로 접힌다 |
+| `PopularPlaces.reset()` | `void` | 다음 `top()`이 서버를 다시 타게 한다 |
+
+```js
+// items[] — SavedPlaces.list()와 **같은 키 이름**을 쓴다.
+// home.js가 두 목록을 같은 함수로 그리기 때문이다.
+{ rank, id, name, category, address, x, y, url, count }
+```
+
+- **실패는 예외가 아니라 `{ ok: false }` 봉투로 온다** (`/api/search`와 같은 결).
+- **성공만 들고 있는다.** 실패를 캐시하면 연결이 돌아와도 새로고침 전까지
+  계속 실패한 것처럼 보인다 (`ReviewCache`가 서버 오류를 캐시하지 않는 것과 같은 이유).
+- **`auth.js`가 클라이언트를 만들 때까지 안에서 기다린다.** 부르는 쪽이 시점을
+  알아야 하는 구조를 만들지 않는다 — 자세한 것은 CLAUDE.md ㉔.
+
+---
+
+## `popular_places()` — 대신 세어주는 DB 함수
+
+`saved_places`의 `select` 정책은 `auth.uid() = user_id`라, 브라우저에서 무엇을
+물어봐도 **내 것만** 돌아온다. 그래서 「모두가 담은 수」는 클라이언트가 셀 수 없다.
+
+**RLS를 끄는 것은 답이 아니다.** 대신 **세는 일만** 하는 함수를 두고 그것만 부른다.
+
+```
+popular_places(limit_count integer default 5)
+  → rank, place_id, place_name, category_name,
+    road_address_name, x, y, place_url, save_count
+```
+
+- **`user_id`가 반환 타입에 없다.** 실수로 흘릴 통로 자체를 만들지 않는다.
+- `save_count`는 `count(distinct user_id)` — 몇 **명**이 담았는가다.
+- `anon`·`authenticated` 둘 다 부를 수 있다. 인기 코너는 비로그인 방문자가 먼저 본다.
+- DDL은 `supabase-popular-places.sql`. 자세한 것은 CLAUDE.md ㉓.
 
 ---
 
