@@ -538,6 +538,11 @@ html:has(.review-panel[open]) { overflow: hidden; }
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  /* **세로만 스크롤한다.** 이 줄이 없으면 한 축이 auto인 순간 나머지 축도 auto로
+     계산되어(CSS overflow 규칙), 안쪽 것이 조금이라도 넓어지면 리뷰 글 전체가
+     가로로 끌린다. 사진 줄(.review-photos)이 실제로 그 사고를 한 번 냈다.
+     사진 줄은 자기 안에서 따로 가로 스크롤하므로 이 줄에 막히지 않는다. */
+  overflow-x: hidden;
   /* 스크롤이 패널 끝에서 뒤 페이지로 넘어가지 않게 */
   overscroll-behavior: contain;
   padding-top: 20px;
@@ -719,26 +724,16 @@ html:has(.review-panel[open]) { overflow: hidden; }
   /* 세로 스크롤(.review-panel__body)로 넘어가지 않게 가둔다.
      끝까지 밀었을 때 패널 본문이 따라 움직이면 사진을 보다가 화면이 튄다. */
   overscroll-behavior-x: contain;
-
-  /* 본문 좌우 여백까지 사진이 흘러나가 보이도록 음수 마진으로 넓히고
-     같은 크기의 padding으로 첫 장·마지막 장의 시작선을 되돌린다.
-     이렇게 해야 「더 있다」가 잘린 사진으로 드러난다. */
-  margin-left: -20px;
-  margin-right: -20px;
-  padding-left: 20px;
-  padding-right: 20px;
 }
 .review-photos::-webkit-scrollbar { display: none; }
 
-@media (min-width: 768px) {
-  /* 태블릿부터는 패널 안쪽 여백이 28px이다 (.review-panel__inner) */
-  .review-photos {
-    margin-left: -28px;
-    margin-right: -28px;
-    padding-left: 28px;
-    padding-right: 28px;
-  }
-}
+/* **본문 폭 밖으로 넓히지 않는다.** 음수 마진으로 패널 가장자리까지 흘려보내면
+   사진 줄이 .review-panel__body보다 넓어지는데, 본문은 overflow-y: auto라
+   **한 축이 visible이 아니면 나머지 축도 auto로 계산된다** —
+   그 순간 리뷰 글 전체가 가로로 끌린다. 사진이 다 보이는 1440px에서도 나므로
+   좁은 화면만 확인하면 놓친다 (실측으로 한 번 걸렸다).
+   「더 있다」 신호는 음수 마진 없이도 남는다 — 375px에서 사진 줄 내용(412px)이
+   본문 폭(335px)보다 넓어 세 번째 장이 잘려 보인다. */
 
 .review-photos__item {
   flex: 0 0 auto;

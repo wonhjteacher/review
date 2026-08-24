@@ -203,12 +203,15 @@
 <ul class="review-photos plain-list" aria-label="가게 사진">
   <li class="review-photos__item">
     <button type="button" class="review-photos__button" data-action="open-photo" data-photo-index="0">
-      <img class="review-photos__img" src="{photos[].url}" alt="가게 사진 1"
-           loading="lazy" decoding="async">
+      <img class="review-photos__img" src="{photos[].url}" alt="가게 사진 1" decoding="async">
     </button>
   </li>
 </ul>
 ```
+
+**`loading="lazy"`를 붙이지 않는다.** 사진은 패널이 열린 순간 보이는 자리에 있고
+최대 3장이라 아낄 것이 없다. 반대로 요소가 뷰포트 밖에 놓이면 브라우저가 아예 받지 않아
+**회색 자리가 영영 남는다** — 에러가 아니라 그럴듯한 실패다.
 
 **사진이 없으면 `<ul>`을 통째로 만들지 않는다.** 빈 목록을 두고 CSS로 숨기지 않는다 —
 `.analysis`를 리뷰 0개일 때 만들지 않는 것과 같은 규칙이다.

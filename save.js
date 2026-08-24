@@ -344,7 +344,10 @@
 
     var img = el('img', 'review-photos__img');
     img.alt = '가게 사진 ' + (index + 1);
-    img.loading = 'lazy';
+    /* **loading="lazy"를 붙이지 않는다.** 사진은 패널이 열린 순간 보이는 자리에 있고
+       최대 3장이라 지연 로딩으로 아낄 것이 없다. 반대로 위험만 생긴다 —
+       어떤 이유로든 이 요소가 뷰포트 밖에 놓이면 브라우저가 사진을 아예 받지 않아
+       **회색 자리가 영영 남는다.** 에러가 아니라 그럴듯한 실패다. */
     img.decoding = 'async';
 
     function markLoaded() { img.classList.add('is-loaded'); }
