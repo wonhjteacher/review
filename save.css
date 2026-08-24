@@ -287,22 +287,8 @@
   padding-top: 16px;
 }
 
-.place-card__link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  color: var(--color-ink-700);      /* 흰 배경 9.81:1 */
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  transition: color var(--dur-fast) var(--ease);
-}
-.place-card__link:hover { color: var(--color-ink-900); }
-
 /* 리뷰 보기 — 카드의 주된 클릭 동작이지만 화면에서 가장 조용하다.
-   빨강은 담기(CTA)의 몫이다 (DESIGN 10장 — 토마토 레드는 CTA·선택 상태에만).
-   .place-card__link와 같은 무게로 맞춰 액션 줄이 셋으로 갈라져 보이지 않게 한다. */
+   빨강은 담기(CTA)의 몫이다 (DESIGN 10장 — 토마토 레드는 CTA·선택 상태에만). */
 .place-card__reviews {
   display: inline-flex;
   align-items: center;

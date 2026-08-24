@@ -95,16 +95,18 @@
   <p class="caption place-card__distance">{distance}m</p>   <!-- 거리 없으면 이 요소를 아예 넣지 않는다 -->
   <div class="place-card__actions">
     <button type="button" class="place-card__reviews" data-action="reviews">리뷰 보기</button>
-    <a class="place-card__link" href="{place_url}" target="_blank" rel="noopener noreferrer">상세 보기</a>
     <button type="button" class="place-card__save" data-action="save">담기</button>
   </div>
 </li>
 ```
 
 **카드 전체가 리뷰 패널의 클릭 영역이다.**
-`.place-card__actions` **안**에서 시작된 클릭은 제외한다 — 담기·상세 보기가 먼저다.
+`.place-card__actions` **안**에서 시작된 클릭은 제외한다 — 담기가 먼저다.
 `.place-card__reviews` 버튼은 그 클릭 영역의 **키보드 대체 수단**이다.
-카드 전체에 `tabindex`를 걸지 않는다 (카드 안에 이미 포커스 가능한 요소가 셋이다).
+카드 전체에 `tabindex`를 걸지 않는다 (카드 안에 이미 포커스 가능한 요소가 둘이다).
+
+카드에는 **상세 보기 링크를 두지 않는다.** 액션 줄은 `리뷰 보기`와 `담기` 둘뿐이다 —
+`place_url`은 리뷰 패널의 `.review-panel__link`와 `saved_places` 저장에만 쓴다.
 
 **상태**
 | 클래스 | 의미 | 버튼 라벨 |

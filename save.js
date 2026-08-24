@@ -162,21 +162,13 @@
     var actions = el('div', 'place-card__actions');
 
     /* 카드 전체가 클릭 영역이지만 그것만으로는 키보드로 리뷰를 열 수 없다.
-       카드에 tabindex를 거는 대신(안에 이미 포커스 가능한 요소가 셋이다)
+       카드에 tabindex를 거는 대신(안에 이미 포커스 가능한 요소가 둘이다)
        진짜 버튼을 하나 둔다 — 마우스와 키보드가 같은 곳에 닿는다. */
     var reviewButton = el('button', 'place-card__reviews', '리뷰 보기');
     reviewButton.type = 'button';
     reviewButton.dataset.action = 'reviews';
     reviewButton.setAttribute('aria-label', place.place_name + ' 리뷰 보기');
     actions.appendChild(reviewButton);
-
-    if (place.place_url) {
-      var link = el('a', 'place-card__link', '상세 보기');
-      link.href = place.place_url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      actions.appendChild(link);
-    }
 
     var button = el('button', 'place-card__save');
     button.type = 'button';
@@ -901,7 +893,7 @@
 
     var reviewButton = event.target.closest('[data-action="reviews"]');
 
-    /* 액션 줄 안에서 시작된 클릭은 리뷰를 열지 않는다 — 담기와 상세 보기가 먼저다.
+    /* 액션 줄 안에서 시작된 클릭은 리뷰를 열지 않는다 — 담기가 먼저다.
        리뷰 보기 버튼만 예외다. 그 줄 안에 있지만 리뷰를 여는 것이 하는 일이다. */
     if (!reviewButton && event.target.closest('.place-card__actions')) return;
 
