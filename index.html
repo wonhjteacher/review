@@ -16,6 +16,24 @@
 </head>
 <body>
 
+<!-- 상단 내비게이션 — 주요 메뉴로 바로 이동. index.html 전용이다.
+     .site-auth(로그인)와 같은 줄에 겹쳐 보이도록 fixed로 얹는다 — style.css 참고.
+     "추천"은 로그인한 사람에게만 의미가 있는 코너라 #for-you와 마찬가지로
+     hidden으로 시작하고, home.js가 #for-you를 열고 닫을 때 같이 맞춘다. -->
+<header class="site-nav" id="site-nav">
+  <div class="site-nav__top-inner container container--wide">
+    <a class="site-nav__brand" href="#hero">오늘은 여기</a>
+  </div>
+  <nav class="site-nav__menu" aria-label="주요 메뉴">
+    <div class="site-nav__menu-inner container container--wide">
+      <a class="site-nav__pill" href="#demo" data-nav="demo">데모</a>
+      <a class="site-nav__pill" href="save.html">담기</a>
+      <a class="site-nav__pill" href="#popular" data-nav="popular">인기</a>
+      <a class="site-nav__pill" href="#for-you" id="site-nav-foryou" data-nav="for-you" hidden>추천</a>
+    </div>
+  </nav>
+</header>
+
 <!-- 로그인 (UI-CONTRACT 「.site-auth」). 비워둔다 — auth.js가 상태에 따라 채운다.
      세션 복원 전에는 일부러 비어 있다: 로그인한 사용자에게 로그인 버튼이 깜빡이지 않게. -->
 <div class="site-auth" id="site-auth"></div>
@@ -24,7 +42,6 @@
 <section id="hero" class="section section--bg hero">
   <div class="container container--wide hero__grid">
     <div class="hero__copy">
-      <p class="caption hero__brand">오늘은 여기</p>
       <h1 class="display hero__title">저장은 했는데,<br>오늘 어디 가지?</h1>
       <p class="body-l hero__sub">담아둔 곳이 있으면 골라드리고,<br>없으면 담는 것부터 도와드려요.</p>
       <div class="action">
@@ -58,42 +75,6 @@
   <div class="hero__hint" aria-hidden="true">
     <span class="caption">내려보기</span>
     <span class="hero__arrow"></span>
-  </div>
-</section>
-
-<!-- ② 문제 공감 — 태블릿부터 3컬럼 -->
-<section id="problem" class="section section--alt">
-  <div class="container container--wide">
-    <h2 class="h1 section__title">저장한 맛집은 늘어나는데,<br>점심은 늘 가던 곳</h2>
-    <ul class="plain-list cards cards--3">
-      <li class="empathy"><p class="body">저장 목록이 길어질수록 열어보기 싫어져요</p></li>
-      <li class="empathy"><p class="body">뭐가 내 취향이었는지 기억이 안 나요</p></li>
-      <li class="empathy"><p class="body">결국 어제 갔던 데를 또 가요</p></li>
-    </ul>
-  </div>
-</section>
-
-<!-- ③ 해결 방식 — 태블릿부터 3컬럼 -->
-<section id="how" class="section section--bg">
-  <div class="container container--wide">
-    <h2 class="h1 section__title">담아두고, 남기고,<br>꺼내 쓰면 돼요</h2>
-    <ol class="plain-list cards cards--3">
-      <li class="step">
-        <span class="caption step__num">1</span>
-        <h3 class="h2 step__title">담는다</h3>
-        <p class="body step__desc">가보고 싶은 곳을 모아둬요</p>
-      </li>
-      <li class="step">
-        <span class="caption step__num">2</span>
-        <h3 class="h2 step__title">가보고 남긴다</h3>
-        <p class="body step__desc">&ldquo;또 올까?&rdquo; 한 줄만 기록해요</p>
-      </li>
-      <li class="step">
-        <span class="caption step__num">3</span>
-        <h3 class="h2 step__title">골라준다</h3>
-        <p class="body step__desc">오늘 조건에 맞는 한 곳을 꺼내드려요</p>
-      </li>
-    </ol>
   </div>
 </section>
 
@@ -250,5 +231,6 @@
 <script src="popular-places.js"></script>
 <script src="app.js"></script>
 <script src="home.js"></script>
+<script src="site-nav.js"></script>
 </body>
 </html>

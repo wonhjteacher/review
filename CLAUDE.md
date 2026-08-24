@@ -91,10 +91,14 @@ api/analyze.js   배포 — 구글 Gemini 분석.  같음. 셋 중 여기만 POS
 
 ```
 Phase 0 — 랜딩페이지
-index.html   섹션 9개 마크업. 데모(#demo-stage)와 추천 두 코너만 비어 있고 JS가 채운다
+index.html   섹션 7개 마크업. 데모(#demo-stage)와 추천 두 코너만 비어 있고 JS가 채운다
 style.css    DESIGN.md의 토큰·스케일·컴포넌트 수치를 그대로 옮긴 것. 세 페이지가 공유한다
              `.toast`도 여기 있다 — index.html과 save.html이 **같은 마크업을** 쓰기 때문이다
 app.js       PLACES 데이터 + pickPlace() + 데모 상태 관리
+site-nav.js  상단 내비게이션(헤더) 필의 선택 상태만 맞춘다. 이동은 <a href="#...">가
+             브라우저 기본 동작으로 한다 — 이 파일이 없어도 링크는 그대로 동작한다.
+             `#for-you` 필의 hidden 토글은 여기서 하지 않는다 — 그 판단은 home.js가
+             #for-you 섹션을 여닫는 곳 한 군데다 (㉖과 같은 이유: 창구가 둘이면 경쟁이 생긴다)
 
 Phase 1 — 랜딩페이지의 추천 두 코너
 home.js      「지금 인기」와「나를 위한 추천」 렌더 + 담기. 두 목록의 생김새가 같아 한 파일이다

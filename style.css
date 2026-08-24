@@ -46,7 +46,12 @@
 /* --- 리셋 --- */
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  /* 아래 「모션 축소」 블록이 prefers-reduced-motion:reduce에서
+     이 값을 auto로 되돌린다 (site-nav 클릭 시 튀지 않게). */
+  scroll-behavior: smooth;
+}
 
 body {
   margin: 0;
@@ -163,7 +168,6 @@ button {
 
 @media (min-width: 768px) {
   .cards { gap: 16px; }
-  .cards--3 { grid-template-columns: repeat(3, 1fr); }
   .cards--2 { grid-template-columns: repeat(2, 1fr); }
 }
 
@@ -176,20 +180,117 @@ button {
 @media (min-width: 768px) { .action { max-width: 320px; } }
 
 /* ============================================================
+   상단 내비게이션 — 주요 메뉴로 바로 이동 (index.html 전용)
+   .site-auth와 같은 이유로 fixed다: 문서 흐름에 넣으면 스크롤에
+   묻힌다. site-auth(z-index 20)보다 낮은 z-index를 써서 로그인
+   덩어리가 항상 이 헤더 위, 같은 줄에 얹혀 보이게 한다.
+   ============================================================ */
+:root {
+  /* DESIGN.md 토큰이 아니라 이 헤더 하나를 위한 구현 상수다.
+     아래 site-nav 규칙의 실측 높이(56 + 4+34+12 + 테두리 1)를 그대로 옮겼다.
+     헤더가 콘텐츠를 가리지 않도록 .hero 안쪽 여백과 앵커 스크롤 오프셋
+     둘 다 여기 하나로 맞춘다 — 높이를 바꾸면 이 값만 고친다. */
+  --site-nav-h: 108px;
+}
+
+.site-nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 15;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.site-nav__top-inner {
+  display: flex;
+  align-items: center;
+  height: 56px;
+}
+
+/* 모바일에서는 숨긴다 — 로그인 상태의 .site-auth(마이페이지+이메일+로그아웃
+   세 알약)가 길면 이 자리까지 번져 브랜드 글자와 겹친다(390px 실측으로
+   확인, 최대 54px 겹침). 태블릿부터는 .site-auth가 더 오른쪽(right:20px)에
+   있고 컨테이너 여백도 넓어져 겹치지 않는다(같은 방식으로 실측, 여유 175px). */
+.site-nav__brand {
+  display: none;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+@media (min-width: 768px) {
+  .site-nav__brand { display: block; }
+}
+
+/* 스크롤되는 쪽은 컨테이너 없는 바깥 줄 하나뿐이다 — 안쪽의
+   .container/.container--wide는 정렬·좌우 여백만 맡고(⑧),
+   세로 여백과 overflow-x는 여기서 따로 잡는다. 한 요소에 몰아넣으면
+   .container의 padding 단축 속성과 순서에 따라 서로 지운다. */
+.site-nav__menu {
+  overflow-x: auto;
+  padding: 4px 0 12px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.site-nav__menu::-webkit-scrollbar { display: none; }
+
+.site-nav__menu-inner {
+  display: flex;
+  gap: 8px;
+}
+
+.site-nav__pill {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-ink-700);
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.site-nav__pill:hover { color: var(--color-ink-900); border-color: var(--color-ink-300); }
+
+/* display:flex가 브라우저 기본 [hidden]{display:none}을 이긴다 — .toast와 같은
+   함정이다(CLAUDE.md ⑨). "추천" 필이 로그인 전에도 보이는 원인이라 지우지 말 것. */
+.site-nav__pill[hidden] { display: none; }
+
+/* 선택 상태에만 토마토 레드를 쓴다 — 지금 보고 있는 코너를 표시하는
+   용도라 DESIGN 10장의 CTA·선택 상태 규칙 그대로다. */
+.site-nav__pill.is-active {
+  color: var(--color-primary);
+  background: var(--color-primary-tint);
+  border-color: var(--color-primary-tint);
+  font-weight: 700;
+}
+
+/* 헤더가 늘 떠 있으므로 앵커로 점프한 섹션 맨 위가 그 밑에 묻히지
+   않게 스크롤 정지선을 헤더 높이만큼 내려 잡는다. 히어로는 대신
+   .hero 안쪽 padding-top으로 같은 문제를 푼다(아래) — 둘 다
+   --site-nav-h 하나를 쓴다. */
+#demo, #popular, #for-you {
+  scroll-margin-top: var(--site-nav-h);
+}
+
+/* ============================================================
    ① Hero
    ============================================================ */
 .hero {
   position: relative;
   min-height: 100vh;
   min-height: 100dvh;
+  padding-top: var(--site-nav-h);
   display: flex;
   flex-direction: column;
   justify-content: center;
-}
-
-.hero__brand {
-  color: var(--color-primary);
-  margin-bottom: 16px;
 }
 
 .hero__sub {
@@ -295,11 +396,9 @@ button {
 .link-text:hover { color: var(--color-primary-hover); }
 
 /* ============================================================
-   ② 문제 공감 · ③ 해결 방식 · ⑤ 기능 미리보기
+   ⑤ 기능 미리보기
    그림자 대신 1px 테두리로 구분한다 (DESIGN 4장)
    ============================================================ */
-.empathy,
-.step,
 .feature {
   background: var(--color-bg);
   border: 1px solid var(--color-line);
@@ -307,12 +406,6 @@ button {
   padding: 24px;
 }
 
-.step__num {
-  display: inline-block;
-  color: var(--color-primary);
-  margin-bottom: 8px;
-}
-.step__desc,
 .feature__desc { color: var(--color-ink-700); margin-top: 12px; }
 
 .feature__head {

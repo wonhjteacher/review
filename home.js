@@ -45,6 +45,10 @@
   var forYouStatus = document.getElementById('for-you-status');
   var forYouReason = document.getElementById('for-you-reason');
 
+  // 상단 내비게이션의 "추천" 필. #for-you를 여닫는 곳에서 같이 맞춘다 —
+  // 없는 페이지(마크업이 없을 수도 있으므로)에서도 조용히 넘어가게 null을 허용한다.
+  var forYouNavPill = document.getElementById('site-nav-foryou');
+
   var toast = document.getElementById('toast');
 
   // 마크업이 없는 페이지에서 로드돼도 조용히 아무 일도 하지 않는다.
@@ -438,11 +442,13 @@
       if (!window.Auth.isReady()) return;
 
       forYouSection.hidden = !user;
+      if (forYouNavPill) forYouNavPill.hidden = !user;
       if (user) renderForYou();
     });
   } else {
     // auth.js를 못 불러온 경우. 인기 코너는 그대로 두고 이 코너만 접는다.
     forYouSection.hidden = true;
+    if (forYouNavPill) forYouNavPill.hidden = true;
   }
 
   if (window.SavedPlaces && typeof window.SavedPlaces.onChange === 'function') {
