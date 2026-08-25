@@ -9,40 +9,40 @@
    ============================================================ */
 
 /* ── 목록 ──────────────────────────────────────────────────────
-   카드를 가로로 늘어놓지 않는다. 인기 랭킹은 1위부터 아래로 읽는 것이고,
-   맞춤 추천도 다섯 줄이라 한 줄씩 훑는 편이 빠르다.
-   .cards(그리드)를 쓰지 않는 이유가 이것이다. */
+   기본은 세로 한 줄씩 — 인기 랭킹은 1위부터 아래로 읽는 것이다.
+   추천 카드만 --cards modifier로 태블릿부터 2장이 나란히 선다. */
 .pick-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
-@media (min-width: 768px) { .pick-list { gap: 16px; } }
-
-/* ── 카드 ──────────────────────────────────────────────────────
-   그림자는 결과 카드에만 쓴다 (DESIGN 4장). 여기는 1px 테두리로 구분한다 —
-   ⑤ 기능 미리보기 섹션의 .feature와 같은 규칙이다. */
-.pick-card {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;          /* 모바일에서 담기 줄이 아래로 내려간다 */
-  gap: 12px 16px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-}
+.pick-list--cards { gap: 16px; }
 
 @media (min-width: 768px) {
-  .pick-card { flex-wrap: nowrap; padding: 24px; }
+  .pick-list--cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+  }
 }
+
+/* ── 인기 순위 한 줄 (UI-CONTRACT 「.pick-row」) ─────────────────
+   카드가 아니라 리스트다. 면·그림자 없이 1px 밑줄로만 줄을 가른다 —
+   순위는 위에서 아래로 훑는 것이라 상자가 끼어들 이유가 없다. */
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.pick-row:last-child { border-bottom: 0; }
 
 /* 순위 숫자.
    토마토 레드를 작은 숫자에만 얹는 것은 DESIGN 10장이 허용하는 범위다
    (넓은 배경 면적에는 쓰지 않는다). 흰 배경 위 4.57:1이고
    22px 700이라 큰 글씨 기준(3:1)에는 여유가 있다. */
-.pick-card__rank {
+.pick-row__rank {
   flex: 0 0 auto;
   width: 28px;
   color: var(--color-primary);
@@ -54,48 +54,69 @@
   font-variant-numeric: tabular-nums;   /* 1과 4의 폭이 달라 줄이 어긋나지 않게 */
 }
 
-/* min-width:0이 없으면 긴 가게 이름이 플렉스 항목을 밀어내 카드가 넘친다 */
-.pick-card__body {
-  flex: 1 1 200px;
+/* min-width:0이 없으면 긴 가게 이름이 플렉스 항목을 밀어내 줄이 넘친다 */
+.pick-row__body {
+  flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pick-row__name {
+  color: var(--color-ink-900);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;   /* 띄어쓰기 없는 긴 이름이 375px에서 줄을 밀지 않게 */
+}
+
+.pick-row__meta {
+  color: var(--color-ink-500);
+  font-weight: 400;
+}
+
+@media (min-width: 768px) {
+  .pick-row { padding: 16px 0; }
+  .pick-row__name { font-size: 18px; }
+}
+
+/* ── 추천 카드 (UI-CONTRACT 「.pick-card」) ──────────────────────
+   글자만 있는 세로 카드다 (사진을 넣지 않는 이유는 계약서 참고).
+   그림자는 결과 카드에만 쓴다 (DESIGN 4장). 여기는 1px 테두리로 구분한다. */
+.pick-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+}
+
+.pick-card__body {
+  flex: 1 1 auto;                /* 주소가 없어도 담기 줄이 카드 바닥에 붙게 */
+  min-width: 0;
+  padding: 20px 20px 0;
 }
 
 .pick-card__category { color: var(--color-ink-500); }
-.pick-card__name     { margin-top: 2px; }
+.pick-card__name     { margin-top: 2px; overflow-wrap: anywhere; }
 .pick-card__address  {
   color: var(--color-ink-500);
   font-weight: 400;
   margin-top: 4px;
 }
 
-/* 담긴 수와 담기 버튼. 모바일에서는 한 줄을 통째로 차지하며 양끝으로 벌어진다 */
 .pick-card__side {
-  flex: 1 1 100%;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 20px 20px;
 }
 
-@media (min-width: 768px) {
-  .pick-card__side {
-    flex: 0 0 auto;
-    justify-content: flex-end;
-    gap: 16px;
-  }
-}
-
-.pick-card__count {
-  color: var(--color-ink-500);
-  font-weight: 400;
-  white-space: nowrap;
-}
-
-/* ── 담기 버튼 ─────────────────────────────────────────────────
+/* ── 담기 버튼 (두 코너 공용 — UI-CONTRACT 「.pick-save」) ───────
    save.css의 `.place-card__save`와 **같은 모양이어야 한다.**
    한쪽을 고치면 다른 쪽도 함께 고친다 — 같은 동작을 하는 버튼이
    페이지에 따라 다르게 보이면 그것부터 버그로 읽힌다. */
-.pick-card__save {
+.pick-save {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -116,23 +137,23 @@
               border-color var(--dur-fast) var(--ease),
               color var(--dur-fast) var(--ease);
 }
-.pick-card__save:hover  { background: var(--color-primary-tint); }
-.pick-card__save:active { transform: scale(0.98); }
+.pick-save:hover  { background: var(--color-primary-tint); }
+.pick-save:active { transform: scale(0.98); }
 
 /* 담은 뒤 — 강조를 거둔다. 색 말고도 배경·테두리·굵기(700→400)가
    함께 바뀌므로 흑백에서도 두 상태가 구별된다. */
-.pick-card__save.is-saved {
+.pick-save.is-saved {
   background: var(--color-surface-alt);
   color: var(--color-ink-700);      /* surface-alt 위 9.27:1 */
   font-weight: 400;
   border-color: var(--color-line);
 }
-.pick-card__save.is-saved:hover {
+.pick-save.is-saved:hover {
   color: var(--color-ink-900);
   border-color: var(--color-ink-300);
 }
 
-.pick-card__save:disabled { opacity: 0.6; cursor: default; }
+.pick-save:disabled { opacity: 0.6; cursor: default; }
 
 /* ── 추천 이유 한 줄 ───────────────────────────────────────────
    제목 바로 아래. 왜 이 목록이 나왔는지 말해주는 자리다.
@@ -210,5 +231,5 @@
    transform은 빼고 필요한 것만 남긴다. */
 @media (prefers-reduced-motion: reduce) {
   .pick-status--loading::after { animation: none; opacity: 1; }
-  .pick-card__save:active { transform: none; }
+  .pick-save:active { transform: none; }
 }

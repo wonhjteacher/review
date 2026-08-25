@@ -23,6 +23,23 @@
 </head>
 <body class="save-page container container--wide">
 
+<!-- 상단 내비게이션 — index.html과 같은 부품이다 (스타일은 style.css의 .site-nav).
+     여기는 스크롤 앵커가 없으므로 알약이 전부 페이지 링크다. data-nav를 붙이지 않아
+     site-nav.js는 스스로 물러난다 — 현재 페이지 표시는 마크업의 is-active가 한다.
+     "추천"은 로그인해야 보이는 코너라(index의 home.js가 여닫는다) 이 페이지에는 두지 않는다. -->
+<header class="site-nav">
+  <div class="site-nav__top-inner container container--wide">
+    <a class="site-nav__brand" href="index.html">오늘은 여기</a>
+  </div>
+  <nav class="site-nav__menu" aria-label="주요 메뉴">
+    <div class="site-nav__menu-inner container container--wide">
+      <a class="site-nav__pill" href="index.html">홈</a>
+      <a class="site-nav__pill is-active" href="save.html" aria-current="page">담기</a>
+      <a class="site-nav__pill" href="index.html#popular">인기</a>
+    </div>
+  </nav>
+</header>
+
 <!-- 로그인 (UI-CONTRACT 「.site-auth」). 비워둔다 — auth.js가 상태에 따라 채운다.
      세션 복원 전에는 일부러 비어 있다: 로그인한 사용자에게 로그인 버튼이 깜빡이지 않게. -->
 <div class="site-auth" id="site-auth"></div>

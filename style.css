@@ -157,40 +157,26 @@ button {
 .section__title { margin-bottom: 24px; }
 @media (min-width: 1024px) { .section__title { margin-bottom: 40px; } }
 
-/* --- 카드 그리드 ---------------------------------------------
-   모바일은 1열. 간격은 gap 한 곳에서만 관리한다.
-------------------------------------------------------------- */
-.cards {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-
-@media (min-width: 768px) {
-  .cards { gap: 16px; }
-  .cards--2 { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (min-width: 1024px) {
-  .cards { gap: 24px; }
-}
-
 /* CTA 버튼이 넓은 화면에서 과하게 늘어나지 않게 잡아둔다 */
 .action { max-width: 100%; }
 @media (min-width: 768px) { .action { max-width: 320px; } }
 
 /* ============================================================
-   상단 내비게이션 — 주요 메뉴로 바로 이동 (index.html 전용)
+   상단 내비게이션 — 주요 메뉴로 바로 이동 (index.html · save.html 공용)
+   index는 스크롤 앵커(data-nav + site-nav.js), save는 페이지 링크로 쓴다.
+   콘텐츠를 가리지 않는 여백은 페이지마다 진다 — index는 .hero의 padding-top,
+   save는 save.css의 .save-page가 --site-nav-h를 그대로 가져다 쓴다.
    .site-auth와 같은 이유로 fixed다: 문서 흐름에 넣으면 스크롤에
    묻힌다. site-auth(z-index 20)보다 낮은 z-index를 써서 로그인
    덩어리가 항상 이 헤더 위, 같은 줄에 얹혀 보이게 한다.
    ============================================================ */
 :root {
   /* DESIGN.md 토큰이 아니라 이 헤더 하나를 위한 구현 상수다.
-     아래 site-nav 규칙의 실측 높이(56 + 4+34+12 + 테두리 1)를 그대로 옮겼다.
+     아래 site-nav 규칙의 실측 높이(56 + 4+44+12 + 테두리 1)를 그대로 옮겼다.
      헤더가 콘텐츠를 가리지 않도록 .hero 안쪽 여백과 앵커 스크롤 오프셋
-     둘 다 여기 하나로 맞춘다 — 높이를 바꾸면 이 값만 고친다. */
-  --site-nav-h: 108px;
+     둘 다 여기 하나로 맞춘다 — 높이를 바꾸면 이 값만 고친다.
+     v3에서 알약이 34→44px로 커지며 108→117이 됐다. */
+  --site-nav-h: 117px;
 }
 
 .site-nav {
@@ -217,7 +203,7 @@ button {
    대신 받아주므로 화면이 멀쩡해 보여서 알아채기 어렵다. */
 .site-nav__brand {
   display: none;
-  font-size: 15px;
+  font-size: 20px;                /* v3: 15→20. 알약(18px)보다 한 단계 크게 유지한다 */
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--color-primary);
@@ -242,16 +228,17 @@ button {
 
 .site-nav__menu-inner {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
+/* v3: 글자 14→18px, 높이 34→44px. 높이가 바뀌면 --site-nav-h도 함께 고친다 (위 :root). */
 .site-nav__pill {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  height: 34px;
-  padding: 0 16px;
-  font-size: 14px;
+  height: 44px;                   /* 터치 영역 기준(DESIGN 9장)과도 맞아떨어진다 */
+  padding: 0 20px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1;
   color: var(--color-ink-700);
@@ -280,7 +267,7 @@ button {
    않게 스크롤 정지선을 헤더 높이만큼 내려 잡는다. 히어로는 대신
    .hero 안쪽 padding-top으로 같은 문제를 푼다(아래) — 둘 다
    --site-nav-h 하나를 쓴다. */
-#demo, #popular, #for-you {
+#popular, #for-you {
   scroll-margin-top: var(--site-nav-h);
 }
 
@@ -306,9 +293,49 @@ button {
    .action 밖에 두는 것도 ⑥과 같다: 320px 상한은 버튼에만 걸린다 (DESIGN 8장). */
 .hero__alt { margin-top: 12px; }
 
-/* 미리보기 카드는 PC에서만 등장한다.
-   좁은 화면에서는 바로 아래 데모와 중복되어 스크롤만 길어진다. */
-.hero__preview { display: none; }
+/* ── 사진 자리 (공용 부품 — UI-CONTRACT 「.pick-card」의 .photo-slot) ──
+   아직 비어 있는 자리다. 채워질 자리라는 표시로 점선을 쓴다 —
+   1px 실선 규칙(DESIGN 4장)의 의도적 예외이고, 사진이 들어오면 테두리째 사라진다.
+   data-photo 속성이 어느 그림이 들어갈 자리인지 이름표다 (hero · pick-a · pick-b). */
+.photo-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-alt);
+  border: 1px dashed var(--color-line);
+  border-radius: var(--radius-lg);
+}
+
+.photo-slot__note {
+  /* surface-alt(#FAF8F7) 위에서 ink-500은 4.43:1로 AA 미달 — ink-700을 쓴다
+     (.footer__meta와 같은 이유의 의도적 예외. CLAUDE.md ⑥). */
+  color: var(--color-ink-700);
+  font-weight: 400;
+}
+
+/* 채워진 상태 — 점선과 회색 면은 「비어 있음」의 표시였으므로 함께 걷는다 */
+.photo-slot.is-filled {
+  border: 0;
+  background: none;
+  overflow: hidden;             /* 라운드 밖으로 사진이 삐져나오지 않게 */
+}
+
+.photo-slot__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* 자리 비율(4:3 등)은 자리가 정한다. 사진은 늘리지 않고 잘라서 채운다 —
+     리뷰 패널의 .review-photos__img와 같은 규칙이다. */
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+/* Hero의 사진. 데모 결과 카드 미리보기가 있던 자리다 (DESIGN v3).
+   모바일에서도 보인다 — 미리보기 카드와 달리 아래 섹션과 중복되지 않는다. */
+.hero__photo {
+  aspect-ratio: 4 / 3;
+  margin-top: 40px;
+}
 
 @media (min-width: 1024px) {
   .hero__grid {
@@ -317,8 +344,7 @@ button {
     align-items: center;
     gap: 64px;
   }
-  .hero__preview { display: block; }
-  .hero__preview .result__card { padding: 28px; }
+  .hero__photo { margin-top: 0; }
 }
 
 .hero__hint {
@@ -358,6 +384,7 @@ button {
   font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.01em;
+  text-decoration: none;   /* v3부터 <a>에도 쓴다 (Hero 주 CTA가 담기 페이지 링크다) */
   border-radius: var(--radius-md);
   transition: background var(--dur-fast) var(--ease),
               transform 100ms var(--ease);
@@ -400,219 +427,10 @@ button {
 .link-text:hover { color: var(--color-primary-hover); }
 
 /* ============================================================
-   ⑤ 기능 미리보기
-   그림자 대신 1px 테두리로 구분한다 (DESIGN 4장)
+   푸터
+   (체험 데모·기능 미리보기·마무리 CTA의 스타일은 섹션과 함께 뺐다 — DESIGN v3.
+    데모를 되살리면 git 히스토리에서 그대로 꺼내 쓴다.)
    ============================================================ */
-.feature {
-  background: var(--color-bg);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-lg);
-  padding: 24px;
-}
-
-.feature__desc { color: var(--color-ink-700); margin-top: 12px; }
-
-.feature__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-/* 실제로 열린 기능 카드에만 붙는 링크 */
-.feature__link { margin-top: 4px; margin-left: -4px; }
-
-/* --- 배지 (DESIGN 5장) --- */
-.badge {
-  display: inline-block;
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.50;
-}
-.badge--soon {
-  background: var(--color-surface-alt);
-  color: var(--color-ink-500);
-}
-.badge--wish {
-  background: var(--color-primary-tint);
-  /* tint 배경 위에서 primary는 4.11:1로 AA에 못 미친다.
-     한 단계 어두운 hover 값이 5.24:1로 통과한다 (DESIGN 2장 대비 확인 지침). */
-  color: var(--color-primary-hover);
-}
-/* 이미 열린 기능. `준비 중`과 형태는 같고 면 색으로만 갈린다 */
-.badge--live {
-  background: var(--color-primary-tint);
-  /* tint 배경 위 primary는 4.11:1로 AA 미달 — hover 값이 5.24:1로 통과한다
-     (.badge--wish와 같은 이유의 의도적 예외) */
-  color: var(--color-primary-hover);
-}
-
-/* alt 배경 섹션 안에서는 준비 중 배지가 묻히므로 흰 배경으로 뒤집는다 */
-.section--alt .badge--soon { background: var(--color-bg); }
-
-/* ============================================================
-   ④ 체험 데모
-   ============================================================ */
-.demo {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: flex;
-  align-items: center;
-  padding: 64px 0;
-}
-/* 화면이 아무리 넓어도 데모는 좁은 단일 컬럼을 유지한다.
-   '한 화면에 하나씩'이 이 섹션의 핵심이다 (DESIGN 1장). */
-.demo__inner { width: 100%; }
-.demo .container { max-width: 520px; }
-
-/* 질문 전환 (DESIGN 6장) */
-.demo__stage.is-leaving { opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
-
-.view {
-  animation: view-in var(--dur-base) var(--ease) both;
-}
-.view--result {
-  animation: result-in 300ms var(--ease) both;
-}
-
-@keyframes view-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes result-in {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* --- 진행 표시 (DESIGN 5장) --- */
-.progress__label {
-  display: block;
-  color: var(--color-ink-500);
-  margin-bottom: 8px;
-}
-.progress__track {
-  height: 3px;
-  background: var(--color-line);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-.progress__fill {
-  height: 100%;
-  background: var(--color-primary);
-  border-radius: var(--radius-full);
-  transition: width var(--dur-base) var(--ease);
-}
-
-.question {
-  margin: 24px 0;
-  /* 포커스를 받지만 링은 띄우지 않는다 — 시각적 소음이므로 */
-  outline: none;
-}
-
-/* --- 선택지 버튼 (DESIGN 5장) --- */
-.choices { display: flex; flex-direction: column; gap: 12px; }
-
-.choice {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 60px;
-  padding: 0 20px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
-  color: var(--color-ink-900);
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  text-align: left;
-  transition: border-color var(--dur-fast) var(--ease),
-              background var(--dur-fast) var(--ease);
-}
-.choice:hover { border-color: var(--color-ink-300); }
-
-/* 선택됨 — 색만이 아니라 테두리 굵기도 함께 바꾼다 (DESIGN 9장) */
-.choice.is-selected {
-  background: var(--color-primary-tint);
-  border: 1.5px solid var(--color-primary);
-}
-
-.demo__back { margin-top: 16px; }
-
-/* --- 결과 카드 (DESIGN 5장) --- */
-.result__card {
-  background: var(--color-bg);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-result);
-  padding: 24px;
-}
-
-.result__category { color: var(--color-ink-500); }
-.result__name     { margin-top: 4px; }
-
-.result__tags {
-  display: flex;
-  flex-wrap: wrap;      /* 태그가 2개든 3개든 깨지지 않게 */
-  gap: 8px;
-  margin-top: 8px;
-  color: var(--color-ink-500);
-}
-
-.result__oneliner {
-  color: var(--color-ink-700);
-  margin-top: 16px;
-}
-
-.result__note {
-  color: var(--color-ink-500);
-  margin-top: 12px;
-}
-
-.result__divider {
-  height: 1px;
-  background: var(--color-line);
-  margin: 20px 0;
-  border: 0;
-}
-
-.result__revisit {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--color-ink-700);
-  font-size: 15px;
-}
-/* 숫자만 primary + 700 */
-.result__rate {
-  color: var(--color-primary);
-  font-weight: 700;
-  font-size: 20px;
-  letter-spacing: -0.02em;
-}
-
-.result__reason {
-  color: var(--color-ink-500);
-  margin: 12px 4px 0;   /* 카드 밖 */
-}
-
-.result__again { margin-top: 24px; }
-
-/* ============================================================
-   ⑥ 마무리 CTA · ⑦ 푸터
-   ============================================================ */
-@media (min-width: 768px) {
-  .closing { text-align: center; }
-  .closing .action { margin: 0 auto; }
-}
-
-/* 주 CTA(다시 골라보기)를 가리지 않도록 아래에 한 단계 낮춰 둔다 */
-.closing__alt { margin-top: 12px; }
-
-/* --- 푸터 --- */
 .footer { padding: 32px 0 40px; }
 .footer__meta-group { margin-top: 4px; }
 
@@ -638,16 +456,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .hero__arrow { animation: none; }
 
-  .view, .view--result {
-    animation: fade-in var(--dur-base) var(--ease) both;
-  }
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
-
   .btn-primary:active { transform: none; }
-  .progress__fill { transition: none; }
 
   .toast { animation: toast-fade-in var(--dur-base) var(--ease) both; }
   @keyframes toast-fade-in {

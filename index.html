@@ -16,7 +16,7 @@
 </head>
 <body>
 
-<!-- 상단 내비게이션 — 주요 메뉴로 바로 이동. index.html 전용이다.
+<!-- 상단 내비게이션 — 주요 메뉴로 바로 이동. save.html에도 같은 부품이 있다.
      .site-auth(로그인)와 같은 줄에 겹쳐 보이도록 fixed로 얹는다 — style.css 참고.
      "추천"은 로그인한 사람에게만 의미가 있는 코너라 #for-you와 마찬가지로
      hidden으로 시작하고, home.js가 #for-you를 열고 닫을 때 같이 맞춘다.
@@ -43,37 +43,27 @@
      세션 복원 전에는 일부러 비어 있다: 로그인한 사용자에게 로그인 버튼이 깜빡이지 않게. -->
 <div class="site-auth" id="site-auth"></div>
 
-<!-- ① Hero — PC에서 2단 (카피 | 결과 카드 미리보기) -->
+<!-- ① Hero — PC에서 2단 (카피 | 사진).
+     결과 카드 미리보기는 데모와 함께 뺐다 (DESIGN v3). 그 자리에 사진이 들어온다.
+     .photo-slot은 아직 비어 있는 자리다 — 사진이 오면 안의 안내 문구 대신
+     <img>를 넣고 점선 테두리를 걷는다 (UI-CONTRACT 「.pick-card」의 .photo-slot 참고). -->
 <section id="hero" class="section section--bg hero">
   <div class="container container--wide hero__grid">
     <div class="hero__copy">
       <h1 class="display hero__title">저장은 했는데,<br>오늘 어디 가지?</h1>
-      <p class="body-l hero__sub">담아둔 곳이 있으면 골라드리고,<br>없으면 담는 것부터 도와드려요.</p>
+      <p class="body-l hero__sub">가보고 싶은 곳을 담아두면<br>오늘 갈 한 곳을 골라드려요.</p>
       <div class="action">
-        <button type="button" class="btn-primary" id="hero-cta">오늘 갈 곳 골라보기</button>
+        <!-- 데모가 빠져서 주 CTA가 담기 페이지로 간다. 버튼이 아니라 링크다 —
+             페이지 이동은 브라우저 기본 동작으로 한다 (site-nav.js와 같은 결). -->
+        <a class="btn-primary" href="save.html">맛집 담으러 가기</a>
       </div>
-
-      <!-- 담아둔 곳이 없는 첫 방문자를 위한 두 번째 입구.
-           주 전환은 여전히 ④ 체험 데모다 — 그래서 버튼이 아니라 텍스트 링크로 한 단계 낮춘다
-           (DESIGN 8장 「랜딩에서 담기 페이지로 가는 입구」). -->
-      <p class="hero__alt"><a class="link-text" href="save.html">먼저 맛집부터 담을래요</a></p>
+      <p class="hero__alt"><a class="link-text" href="#popular">요즘 인기 먼저 볼래요</a></p>
     </div>
 
-    <!-- 아래 체험 데모의 결과를 미리 보여주는 장식 요소.
-         실제 정보는 데모가 제공하므로 낭독기에서는 감춘다. -->
-    <div class="hero__preview" aria-hidden="true">
-      <div class="result__card">
-        <p class="caption result__category">한식</p>
-        <p class="h2 result__name">담백한식탁</p>
-        <p class="caption result__tags"><span>#혼밥</span><span>#가까움</span><span>#가성비</span></p>
-        <p class="body result__oneliner">&ldquo;혼자 가서 20분 만에 먹고 나오기 좋아요&rdquo;</p>
-        <hr class="result__divider">
-        <div class="result__revisit">
-          <span>또 갈 것 같아요</span>
-          <span class="result__rate">88%</span>
-        </div>
-      </div>
-      <p class="caption result__reason">혼자 가기 좋고, 가까워서 골랐어요</p>
+    <!-- 채워진 사진 자리 (UI-CONTRACT 「.photo-slot」 채워진 상태).
+         원본은 img/Korean.png(1MB), 화면에는 JPEG 사본(193KB)을 쓴다. -->
+    <div class="photo-slot is-filled hero__photo" data-photo="hero" aria-hidden="true">
+      <img class="photo-slot__img" src="img/hero.jpg" alt="">
     </div>
   </div>
 
@@ -83,28 +73,22 @@
   </div>
 </section>
 
-<!-- ④ 체험 데모 — 화면 크기와 무관하게 중앙 단일 컬럼 (한 화면에 하나씩) -->
-<section id="demo" class="section--bg demo">
-  <div class="container demo__inner">
-    <div class="demo__stage" id="demo-stage" aria-live="polite"></div>
-  </div>
-</section>
-
-<!-- ⑤ 나를 위한 추천 — **로그인한 사람에게만 보인다.**
+<!-- ② 오늘 여기 어때? (맞춤 추천) — **로그인한 사람에게만 보인다.** 카드 2장.
      세션 복원이 끝나기 전에는 로그인 여부를 모르므로 hidden으로 시작한다.
      미리 펴두면 비로그인 방문자에게 잠깐 나타났다 접히는 것이 보인다
      (`.site-auth`가 로그인 버튼을 미리 그리지 않는 것과 같은 이유 — CLAUDE.md ⑰). -->
 <section id="for-you" class="section section--alt" hidden>
   <div class="container container--wide">
-    <h2 class="h1 section__title">담아두신 곳을 보니,<br>여기도 어울려요</h2>
+    <h2 class="h1 section__title">오늘 여기 어때?</h2>
     <p class="body pick-reason" id="for-you-reason" hidden></p>
-    <ul class="plain-list pick-list" id="for-you-list"></ul>
+    <ul class="plain-list pick-list pick-list--cards" id="for-you-list"></ul>
     <p class="pick-status" id="for-you-status" role="status" aria-live="polite"></p>
   </div>
 </section>
 
-<!-- ⑥ 지금 인기 — 로그인과 무관하다. 비로그인 방문자가 이 페이지에서
-     처음 만나는 실제 데이터라, 세션 복원을 기다리지 않고 바로 채운다. -->
+<!-- ③ 지금 인기 — 로그인과 무관하다. 비로그인 방문자가 이 페이지에서
+     처음 만나는 실제 데이터라, 세션 복원을 기다리지 않고 바로 채운다.
+     카드가 아니라 순위 리스트다 (UI-CONTRACT 「.pick-row」). -->
 <section id="popular" class="section section--bg">
   <div class="container container--wide">
     <h2 class="h1 section__title">요즘 사람들이<br>가장 많이 담은 곳</h2>
@@ -113,70 +97,7 @@
   </div>
 </section>
 
-<!-- ⑦ 기능 미리보기 — 태블릿부터 2×2 -->
-<section id="features" class="section section--alt">
-  <div class="container container--wide">
-    <h2 class="h1 section__title">이런 것들을<br>하나씩 열고 있어요</h2>
-    <ul class="plain-list cards cards--2">
-      <!-- 이 기능만 실제로 열려 있다. 배지와 설명을 현재 구현에 맞춘다 -->
-      <li class="feature">
-        <div class="feature__head">
-          <h3 class="h2">맛집 담기</h3>
-          <span class="badge badge--live">써볼 수 있어요</span>
-        </div>
-        <p class="body feature__desc">검색해서 가보고 싶은 곳을 담아둬요</p>
-        <a class="link-text feature__link" href="save.html">담으러 가기</a>
-      </li>
-      <li class="feature">
-        <div class="feature__head">
-          <h3 class="h2">방문 기록</h3>
-          <span class="badge badge--soon">준비 중</span>
-        </div>
-        <p class="body feature__desc">또 갈지 안 갈지만 남기면 끝이에요</p>
-      </li>
-      <li class="feature">
-        <div class="feature__head">
-          <h3 class="h2">리뷰 탐색</h3>
-          <span class="badge badge--soon">준비 중</span>
-        </div>
-        <p class="body feature__desc">다른 사람들의 기록에서 찾아봐요</p>
-      </li>
-      <li class="feature">
-        <div class="feature__head">
-          <h3 class="h2">취향 대시보드</h3>
-          <span class="badge badge--soon">준비 중</span>
-        </div>
-        <p class="body feature__desc">내가 어떤 걸 좋아하는지 한눈에 봐요</p>
-      </li>
-    </ul>
-  </div>
-</section>
-
-<!-- ⑧ 마무리 CTA -->
-<section id="closing" class="section section--bg">
-  <div class="container closing">
-    <h2 class="h1 section__title">오늘 점심,<br>더 고민하지 마세요</h2>
-    <div class="action">
-      <button type="button" class="btn-primary" id="closing-cta">다시 골라보기</button>
-    </div>
-
-    <!-- 주 전환은 여전히 체험 데모다. 담기 페이지는 그 다음 행동으로만 제시한다 -->
-    <p class="closing__alt"><a class="link-text" href="save.html">가보고 싶은 곳 담아두기</a></p>
-
-    <!--
-      사전 신청 자리 (Phase 0 범위 밖 — PRD 4장)
-      기능을 붙일 때 아래 마크업을 살려서 쓴다.
-
-      <form class="signup" id="signup">
-        <label class="caption" for="signup-email">먼저 써보고 싶다면 메일을 남겨주세요</label>
-        <input class="signup__input" id="signup-email" type="email" name="email" placeholder="name@example.com" required>
-        <button class="btn-primary" type="submit">신청하기</button>
-      </form>
-    -->
-  </div>
-</section>
-
-<!-- ⑨ 푸터 — PC에서 좌우 배치 -->
+<!-- ④ 푸터 — PC에서 좌우 배치 -->
 <footer class="section--alt footer">
   <div class="container container--wide footer__inner">
     <p class="caption footer__brand">오늘은 여기</p>
@@ -232,9 +153,9 @@
 <script src="auth.js"></script>
 <!-- 순서가 있다. saved-places.js와 popular-places.js는 Auth.client()로 클라이언트를
      받아가므로 auth.js 뒤여야 하고, home.js는 그 둘의 창구를 쓰므로 맨 뒤다. -->
+<!-- app.js(체험 데모)는 v3에서 내렸다. 파일은 저장소에 남아 있다 — CLAUDE.md 아키텍처 참고. -->
 <script src="saved-places.js"></script>
 <script src="popular-places.js"></script>
-<script src="app.js"></script>
 <script src="home.js"></script>
 <script src="site-nav.js"></script>
 </body>

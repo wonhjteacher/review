@@ -1023,9 +1023,9 @@ Esc 닫기·배경 비활성을 브라우저에게서 공짜로 준다. 직접 �
 
 ## 랜딩페이지의 추천 두 코너 — `index.html`
 
-`save.html`·`mypage.html`과 달리 **한 파일 안에 코너가 둘**이고,
-목록의 생김새는 **같다.** 그래서 클래스도 코너 이름이 아니라 부품 이름으로 붙인다
-(`.popular-…`/`.for-you-…`가 아니라 `.pick-…`).
+`save.html`·`mypage.html`과 달리 **한 파일 안에 코너가 둘**이다.
+v3부터 두 목록의 생김새가 **다르다** — 인기는 순위 리스트(`.pick-row`),
+추천은 카드(`.pick-card`)다. 담기 버튼(`.pick-save`)과 안내 문구(`.pick-status`)만 공유한다.
 
 ```html
 <head>
@@ -1033,17 +1033,17 @@ Esc 닫기·배경 비활성을 브라우저에게서 공짜로 준다. 직접 �
   <link rel="stylesheet" href="home.css">   <!-- style.css 다음이어야 한다 -->
 </head>
 
-<!-- ⑤ 나를 위한 추천 — 로그인한 사람에게만 보인다 -->
+<!-- ② 오늘 여기 어때? (맞춤 추천) — 로그인한 사람에게만 보인다. 카드 2장 -->
 <section id="for-you" class="section section--alt" hidden>
   <div class="container container--wide">
-    <h2 class="h1 section__title">담아두신 곳을 보니,<br>여기도 어울려요</h2>
+    <h2 class="h1 section__title">오늘 여기 어때?</h2>
     <p class="body pick-reason" id="for-you-reason" hidden>{카테고리}을 가장 많이 담으셨어요</p>
-    <ul class="plain-list pick-list" id="for-you-list"></ul>
+    <ul class="plain-list pick-list pick-list--cards" id="for-you-list"></ul>
     <p class="pick-status" id="for-you-status" role="status" aria-live="polite"></p>
   </div>
 </section>
 
-<!-- ⑥ 지금 인기 — 로그인과 무관하다 -->
+<!-- ③ 지금 인기 — 로그인과 무관하다. 순위 리스트 -->
 <section id="popular" class="section section--bg">
   <div class="container container--wide">
     <h2 class="h1 section__title">요즘 사람들이<br>가장 많이 담은 곳</h2>
@@ -1061,46 +1061,92 @@ Esc 닫기·배경 비활성을 브라우저에게서 공짜로 준다. 직접 �
 낭독기가 「목록 5개 중 1번째」를 읽어주는 것이 순위와 겹치지 않게, 순위 숫자는
 화면용 `<span>`으로 따로 둔다.
 
+**추천은 2장까지만 세운다** (`PICK_N = 2`). 랜딩은 결정을 돕는 자리라
+목록을 길게 늘어놓지 않는다 — 더 탐색할 사람은 담기 페이지로 간다.
+
 ---
 
-## `.pick-card` — 추천 카드 (`.pick-list` 안, `<li>`)
+## `.pick-row` — 인기 순위 한 줄 (`#popular-list` 안, `<li>`)
 
-**두 코너가 같은 카드를 쓴다.** 다른 것은 `__rank`와 `__count`의 **유무뿐이다.**
+카드가 아니라 **리스트다.** 면·그림자 없이 1px 밑줄로만 줄을 가른다 —
+순위는 1위부터 아래로 훑는 것이라 상자가 끼어들 이유가 없다.
+
+```html
+<li class="pick-row" data-place-id="{id}">
+  <span class="pick-row__rank">1</span>
+  <div class="pick-row__body">
+    <span class="pick-row__name">{place_name}</span>
+    <span class="caption pick-row__meta">{카테고리 마지막 마디} · {n}명이 담았어요</span>
+  </div>
+  <button type="button" class="pick-save" data-action="save">담기</button>
+</li>
+```
+
+`.pick-row__meta`는 카테고리와 담긴 수를 ` · `로 잇는다. 카테고리가 비어 있으면
+(컬럼이 생기기 전에 담긴 행) 담긴 수만 쓴다 — 앞에 붙은 `·`를 남기지 않는다.
+
+---
+
+## `.pick-card` — 추천 카드 (`#for-you-list` 안, `<li>`)
+
+**글자만 있는 카드다.** 태블릿부터 2장이 나란히 선다.
+사진을 넣지 않는 이유 — 추천 두 장은 **항상 같은 카테고리**라, 실제 가게 사진이 없는
+지금은 같은 분위기 그림 두 장이 나란히 서게 된다. 정보가 아니라 소음이다.
 
 ```html
 <li class="pick-card" data-place-id="{id}">
-  <span class="pick-card__rank">1</span>                    <!-- 인기 목록에만 -->
   <div class="pick-card__body">
     <p class="caption pick-card__category">{category_name 마지막 마디}</p>
     <h3 class="h2 pick-card__name">{place_name}</h3>
     <p class="caption pick-card__address">{road_address_name}</p>
   </div>
   <div class="pick-card__side">
-    <span class="caption pick-card__count">{n}명이 담았어요</span>   <!-- 인기 목록에만 -->
-    <button type="button" class="pick-card__save" data-action="save">담기</button>
+    <button type="button" class="pick-save" data-action="save">담기</button>
   </div>
 </li>
 ```
 
-**카드 전체는 클릭 영역이 아니다.** `.place-card`와 다른 점이다 —
-랜딩페이지에는 리뷰 패널이 없으므로 카드를 눌러서 열 곳이 없다.
+---
 
-**상세 보기 링크를 두지 않는다.** `.place-card`와 같은 규칙이다 —
-액션 줄은 `담기` 하나(인기 목록은 담긴 수 + 담기)뿐이다.
+## `.photo-slot` — 사진 자리 (style.css 공용 부품, 지금은 Hero 하나)
+
+**채워질 자리라는 표시로 점선 테두리를 쓴다** — 1px 실선 규칙(DESIGN 4장)의
+의도적 예외이고, 실제 사진이 들어오면 테두리째 사라진다.
+`data-photo`는 어느 그림이 들어갈 자리인지 이름표다 (현재 `hero` 하나).
+
+**채워진 상태** — 안내 문구 대신 `<img>`를 넣고 `is-filled`를 붙인다:
+
+```html
+<div class="photo-slot is-filled hero__photo" data-photo="hero" aria-hidden="true">
+  <img class="photo-slot__img" src="img/hero.jpg" alt="">
+</div>
+```
+
+`is-filled`가 점선 테두리와 회색 면을 걷는다. 장식 이미지라 `aria-hidden`은 자리에,
+`alt=""`는 이미지에 그대로 둔다 — 낭독기가 파일 이름을 읽는 일이 없게.
+원본(`img/*.png`, 800×600)은 그대로 두고 **화면에는 JPEG로 눌러 만든 사본을 쓴다**
+(`img/hero.jpg` — 1MB PNG를 히어로에서 그대로 내리면 첫 화면이 그만큼 늦어진다).
+
+**카드 전체는 클릭 영역이 아니다.** 랜딩페이지에는 리뷰 패널이 없으므로
+카드를 눌러서 열 곳이 없고, 상세 보기 링크도 두지 않는다.
+
+---
+
+## `.pick-save` — 담기 버튼 (두 코너 공용)
 
 **상태**
 
 | 클래스 | 의미 | 버튼 라벨 |
 |---|---|---|
-| `.pick-card__save` | 아직 안 담음 | `담기` |
-| `.pick-card__save.is-saved` | 이미 담음 | `담았어요` |
+| `.pick-save` | 아직 안 담음 | `담기` |
+| `.pick-save.is-saved` | 이미 담음 | `담았어요` |
 
 - `.place-card__save`와 **같은 모양이어야 한다.** 한쪽을 고치면 다른 쪽도 함께 고친다 —
   같은 일을 하는 버튼이 페이지마다 다르게 보이면 그것부터 버그로 읽힌다.
 - 비로그인 상태에서 누르면 저장하지 않고 **로그인 창을 띄운다**
   (`Auth.requireSignIn('로그인하면 담아둘 수 있어요')`).
 - 왕복하는 동안 `disabled`로 잠근다. 잠그지 않으면 연타가 insert와 delete를 엇갈리게 보낸다.
-- **담긴 뒤에도 카드는 사라지지 않는다.** 「이미 담은 곳을 뺀다」는 목록을 **만들 때**
+- **담긴 뒤에도 줄·카드는 사라지지 않는다.** 「이미 담은 곳을 뺀다」는 목록을 **만들 때**
   지키는 약속이다. 누르는 즉시 사라지면 방금 담은 것이 취소된 것처럼 보인다.
 
 ---

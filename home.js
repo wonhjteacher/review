@@ -3,13 +3,12 @@
 /* ============================================================
    오늘은 여기 — 랜딩페이지의 추천 두 코너 (Phase 1)
 
-   ① 지금 인기      — 모두가 담은 것을 합쳐 상위 5곳. 비로그인도 본다
-   ② 나를 위한 추천 — 내가 자주 담는 카테고리의 다른 가게. 로그인해야 보인다
+   ① 지금 인기        — 모두가 담은 것을 합쳐 상위 5곳. 순위 리스트(.pick-row). 비로그인도 본다
+   ② 오늘 여기 어때?  — 내가 자주 담는 카테고리의 다른 가게 2곳. 카드(.pick-card). 로그인해야 보인다
 
    ── 두 코너가 한 파일에 있는 이유 ───────────────────────────
-   목록의 **생김새가 같다.** 카드(.pick-card)·담기 버튼·안내 문구·토스트를
-   공유하므로 두 파일로 가르면 같은 코드가 두 벌 생긴다.
-   다른 것은 「무엇을 담아오는가」 하나뿐이고, 그 부분만 갈라 두었다.
+   v3부터 생김새는 갈렸지만, 담기 버튼(.pick-save)·안내 문구(.pick-status)·
+   토스트·데이터 창구를 그대로 공유한다. 두 파일로 가르면 그 공유분이 두 벌 생긴다.
 
    ── 데이터 창구는 직접 만지지 않는다 ────────────────────────
    · 인기 랭킹      → window.PopularPlaces   (popular_places() rpc)
@@ -26,7 +25,7 @@
 
 (function () {
   var TOP_N = 5;          // 인기 랭킹에 세울 수
-  var PICK_N = 5;         // 맞춤 추천에 세울 수
+  var PICK_N = 2;         // 맞춤 추천에 세울 수. 랜딩은 결정을 돕는 자리라 2장까지만 (DESIGN v3)
   var SEARCH_SIZE = 15;   // /api/search의 상한값(SIZE_MAX)과 같다. 걸러낼 여유분까지 받아온다
   var TOAST_MS = 2400;    // save.js와 같은 값 (DESIGN v2 5.2장)
 
@@ -147,16 +146,47 @@
     return best;
   }
 
-  /* --- 카드 --------------------------------------------------- */
+  /* --- 목록 항목 두 가지 ----------------------------------------
+     v3부터 두 코너의 생김새가 다르다 (UI-CONTRACT 「.pick-row」·「.pick-card」).
+     인기 = 순위 리스트 한 줄, 추천 = 사진 카드. 담기 버튼(.pick-save)만 공유한다. */
 
-  /* 두 목록이 같은 카드를 쓴다. 다른 것은 순위 숫자와 담긴 수의 유무뿐이다. */
-  function pickCard(item, options) {
-    var li = el('li', 'pick-card');
+  function saveButton(item) {
+    var button = el('button', 'pick-save');
+    button.type = 'button';
+    button.dataset.action = 'save';
+    applySaveState(button, savedHas(item.id), item.name);
+    return button;
+  }
+
+  /* 인기 한 줄 — 순위·이름·(카테고리 · n명이 담았어요)·담기 */
+  function pickRow(item) {
+    var li = el('li', 'pick-row');
     li.dataset.placeId = item.id;
 
-    if (options.rank) {
-      li.appendChild(el('span', 'pick-card__rank', String(item.rank)));
-    }
+    li.appendChild(el('span', 'pick-row__rank', String(item.rank)));
+
+    var body = el('div', 'pick-row__body');
+    body.appendChild(el('span', 'pick-row__name', item.name));
+
+    /* 카테고리가 비어 있으면(컬럼이 생기기 전에 담긴 행) 담긴 수만 쓴다 —
+       앞에 붙은 `·`를 남기지 않는다 (UI-CONTRACT). */
+    var category = lastSegment(item.category);
+    var meta = category
+      ? category + ' · ' + item.count + '명이 담았어요'
+      : item.count + '명이 담았어요';
+    body.appendChild(el('span', 'caption pick-row__meta', meta));
+    li.appendChild(body);
+
+    li.appendChild(saveButton(item));
+    return li;
+  }
+
+  /* 추천 카드 — 글자만 있다. 사진을 넣지 않는 이유:
+     추천 두 장은 항상 같은 카테고리라, 실제 가게 사진이 없는 지금은
+     같은 분위기 그림 두 장이 나란히 서게 된다. 정보가 아니라 소음이다. */
+  function pickCard(item) {
+    var li = el('li', 'pick-card');
+    li.dataset.placeId = item.id;
 
     var body = el('div', 'pick-card__body');
     var category = lastSegment(item.category);
@@ -166,14 +196,7 @@
     li.appendChild(body);
 
     var side = el('div', 'pick-card__side');
-    if (options.count) {
-      side.appendChild(el('span', 'caption pick-card__count', item.count + '명이 담았어요'));
-    }
-    var button = el('button', 'pick-card__save');
-    button.type = 'button';
-    button.dataset.action = 'save';
-    applySaveState(button, savedHas(item.id), item.name);
-    side.appendChild(button);
+    side.appendChild(saveButton(item));
     li.appendChild(side);
 
     return li;
@@ -192,11 +215,11 @@
     return !!(window.SavedPlaces && window.SavedPlaces.has(placeId));
   }
 
-  function renderList(listNode, items, options) {
+  function renderList(listNode, items, kind) {
     listNode.textContent = '';
     for (var i = 0; i < items.length; i += 1) {
       itemsById[items[i].id] = items[i];
-      listNode.appendChild(pickCard(items[i], options));
+      listNode.appendChild(kind === 'row' ? pickRow(items[i]) : pickCard(items[i]));
     }
   }
 
@@ -204,11 +227,11 @@
      부르는 쪽에서 낙관적으로 먼저 칠하지 않는다 — 저장에 실패했는데
      담긴 것처럼 보이면 새로고침해야 드러나는 거짓말이 된다. */
   function syncSaveButtons() {
-    var cards = document.querySelectorAll('.pick-card');
-    for (var i = 0; i < cards.length; i += 1) {
-      var card = cards[i];
-      var item = itemsById[card.dataset.placeId];
-      var button = card.querySelector('.pick-card__save');
+    var nodes = document.querySelectorAll('.pick-row, .pick-card');
+    for (var i = 0; i < nodes.length; i += 1) {
+      var node = nodes[i];
+      var item = itemsById[node.dataset.placeId];
+      var button = node.querySelector('.pick-save');
       if (!item || !button) continue;
       applySaveState(button, savedHas(item.id), item.name);
     }
@@ -220,7 +243,7 @@
     var button = event.target.closest('[data-action="save"]');
     if (!button) return;
 
-    var card = button.closest('.pick-card');
+    var card = button.closest('.pick-row, .pick-card');
     if (!card) return;
     var item = itemsById[card.dataset.placeId];
     if (!item) return;
@@ -281,7 +304,7 @@
         return;
       }
       setStatus(popularStatus, '');
-      renderList(popularList, res.items, { rank: true, count: true });
+      renderList(popularList, res.items, 'row');
     });
   }
 
@@ -405,7 +428,7 @@
       }
 
       setStatus(forYouStatus, '');
-      renderList(forYouList, picks, { rank: false, count: false });
+      renderList(forYouList, picks, 'card');
     });
   }
 
