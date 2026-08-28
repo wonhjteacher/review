@@ -23,6 +23,7 @@ __pycache__/
 .env.*
 
 # 저장소 메타파일 — 배포본에서 서빙될 이유가 없다
+.github/
 .gitignore
 .vercelignore
 .claude/

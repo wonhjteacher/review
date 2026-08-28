@@ -1,0 +1,42 @@
+# Supabase 무료 프로젝트는 일주일간 API 요청이 없으면 일시정지된다.
+# 3일에 한 번 saved_places에서 1행짜리 조회를 보내 "활동"을 만든다.
+#
+# 응답이 빈 배열([])이어도 성공이다 — anon 키는 RLS 때문에 남의 행을 못 보지만
+# 요청 자체는 DB까지 닿으므로 일시정지 타이머는 리셋된다.
+#
+# 필요한 저장소 시크릿 (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL              프로젝트 주소 (https://xxxx.supabase.co)
+#   SUPABASE_PUBLISHABLE_KEY  publishable(anon) 키 — auth.js에 있는 그 값
+
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "0 3 */3 * *" # 3일마다 03:00 UTC (KST 정오)
+  workflow_dispatch: # 수동 실행 — 시크릿 설정 직후 확인용
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: saved_places 1행 조회
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::SUPABASE_URL 또는 SUPABASE_PUBLISHABLE_KEY 시크릿이 비어 있습니다"
+            exit 1
+          fi
+
+          status=$(curl -s -o /tmp/body -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/saved_places?select=place_id&limit=1" \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_PUBLISHABLE_KEY")
+
+          echo "HTTP $status"
+          if [ "$status" != "200" ]; then
+            echo "::error::keep-alive 실패 — 응답: $(cat /tmp/body)"
+            exit 1
+          fi
+          echo "OK — 프로젝트가 깨어 있습니다"
